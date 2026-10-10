@@ -1,5 +1,5 @@
 // GPU round trip check: upload → compute pass through common.wgsl → readback, compared bit for bit.
-// Not part of the app bundle; run it from the console or a browser test:
+// Tools include it in their diagnostics; from a dev console:
 //   const { gpuSelfTest } = await import('/src/lib/gpu/selftest.ts'); await gpuSelfTest();
 import { toRGBA16 } from '$lib/image/convert';
 import type { ImageBuffer } from '$lib/image/types';

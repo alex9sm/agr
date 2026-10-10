@@ -25,10 +25,41 @@
 		type StatusSegment,
 		type TreeNode
 	} from '$lib/ui/win2k';
+	import DiagnosticsDialog from './DiagnosticsDialog.svelte';
+	import ExportDialog from './ExportDialog.svelte';
+	import Viewer from './Viewer.svelte';
 	import { NormalMapState, type Convention, type LayerId, type View } from './state.svelte';
 
 	const app = new NormalMapState();
 	const narrow = new MediaQuery('(max-width: 899px)', false);
+
+	let fileInput: HTMLInputElement;
+	let exportOpen = $state(false);
+	let diagnosticsOpen = $state(false);
+
+	const hasImage = $derived(app.base !== null);
+	const canOpen = $derived(app.renderer !== null && app.busy === null);
+	const canExport = $derived(hasImage && app.renderer !== null && app.busy === null);
+	/** Flip G is on when the output convention differs from the input's. */
+	const flipping = $derived(app.settings.output.convention !== app.settings.base.convention);
+
+	function chooseFile() {
+		if (canOpen) fileInput.click();
+	}
+
+	function onFileChosen() {
+		const file = fileInput.files?.[0];
+		fileInput.value = ''; // so choosing the same file again still fires
+		if (file) app.open(file);
+	}
+
+	const CHANNELS = { 1: 'Gray', 2: 'Gray + alpha', 3: 'RGB', 4: 'RGBA' } as const;
+
+	function formatBytes(n: number) {
+		if (n < 1024) return `${n} bytes`;
+		if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+		return `${(n / 1024 / 1024).toFixed(1)} MB`;
+	}
 
 	onMount(() => {
 		app.startGpu();
@@ -63,17 +94,17 @@
 		{ value: 'directx', label: 'DirectX (Y−)' }
 	];
 
-	const layers: TreeNode[] = [
+	const layers: TreeNode[] = $derived([
 		{
 			id: 'output',
 			label: 'Output',
 			icon: 'output',
 			children: [
-				{ id: 'base', label: 'Base map', icon: 'baseMap', note: '[none]' },
+				{ id: 'base', label: 'Base map', icon: 'baseMap', note: app.base?.name ?? '[none]' },
 				{ id: 'detail', label: 'Detail map', icon: 'detailMap', note: '[none]' }
 			]
 		}
-	];
+	]);
 	const layerOptions: SelectOption[] = [
 		{ value: 'output', label: 'Output' },
 		{ value: 'base', label: 'Base map' },
@@ -87,17 +118,17 @@
 	const setMode = (mode: View['mode']) => (app.view.mode = mode);
 	const setChannel = (channel: View['channel']) => (app.view.channel = channel);
 
-	// Items needing image loading or GPU processing stay disabled until their phase lands.
+	// Items whose feature lands in a later phase stay disabled.
 	const menus: MenuDef[] = $derived([
 		{
 			label: '&File',
 			items: [
-				{ label: '&Open Base…', shortcut: 'Ctrl+O', disabled: true },
+				{ label: '&Open Base…', shortcut: 'Ctrl+O', disabled: !canOpen, action: chooseFile },
 				{ label: 'Open &Detail…', disabled: true },
 				'separator',
-				{ label: '&Export…', shortcut: 'Ctrl+E', disabled: true },
+				{ label: '&Export…', shortcut: 'Ctrl+E', disabled: !canExport, action: () => (exportOpen = true) },
 				'separator',
-				{ label: '&Close', disabled: true }
+				{ label: '&Close', disabled: !hasImage, action: () => app.close() }
 			]
 		},
 		{
@@ -135,11 +166,11 @@
 				{
 					label: '&Zoom',
 					submenu: [
-						{ label: 'Zoom &In', shortcut: 'Ctrl++', action: () => app.zoomIn() },
-						{ label: 'Zoom &Out', shortcut: 'Ctrl+-', action: () => app.zoomOut() },
+						{ label: 'Zoom &In', shortcut: 'Ctrl++', disabled: !hasImage, action: () => app.zoomIn() },
+						{ label: 'Zoom &Out', shortcut: 'Ctrl+-', disabled: !hasImage, action: () => app.zoomOut() },
 						'separator',
-						{ label: '&Fit', shortcut: 'Ctrl+0', action: () => app.zoomFit() },
-						{ label: '&Actual Size', action: () => app.zoomActual() }
+						{ label: '&Fit', shortcut: 'Ctrl+0', disabled: !hasImage, action: () => app.zoomFit() },
+						{ label: '&Actual Size', disabled: !hasImage, action: () => app.zoomActual() }
 					]
 				}
 			]
@@ -147,13 +178,23 @@
 		{
 			label: '&Tools',
 			items: [
-				{ label: 'Flip &Green (OpenGL ↔ DirectX)', shortcut: 'Ctrl+G', disabled: true },
+				{
+					label: 'Flip &Green (OpenGL ↔ DirectX)',
+					shortcut: 'Ctrl+G',
+					checked: flipping,
+					disabled: !hasImage,
+					action: () => app.flipGreen()
+				},
 				{ label: '&Renormalize', disabled: true }
 			]
 		},
 		{
 			label: '&Help',
-			items: [{ label: '&About AGR Normal Map Editor…', action: () => (aboutOpen = true) }]
+			items: [
+				{ label: 'Run &Diagnostics…', action: () => (diagnosticsOpen = true) },
+				'separator',
+				{ label: '&About AGR Normal Map Editor…', action: () => (aboutOpen = true) }
+			]
 		}
 	]);
 
@@ -185,11 +226,12 @@
 					{
 						kind: 'select',
 						label: 'Bit depth',
-						value: String(s.output.bitDepth),
+						value: String(app.exportBitDepth),
 						options: [
 							{ value: '8', label: '8-bit' },
 							{ value: '16', label: '16-bit' }
 						],
+						disabled: s.output.format === 'tga',
 						set: (d) => (s.output.bitDepth = d === '8' ? 8 : 16)
 					},
 					{ kind: 'category', label: 'Lighting' },
@@ -212,13 +254,16 @@
 						set: (e) => (v.light.elevation = e)
 					}
 				];
-			case 'base':
+			case 'base': {
+				const b = app.base;
 				return [
 					{ kind: 'category', label: 'File' },
-					{ kind: 'text', label: 'Name', value: '(none)' },
-					{ kind: 'text', label: 'Size', value: '—' },
-					{ kind: 'text', label: 'Bit depth', value: '—' },
-					{ kind: 'text', label: 'Channels', value: '—' },
+					{ kind: 'text', label: 'Name', value: b?.name ?? '(none)' },
+					{ kind: 'text', label: 'Format', value: b ? b.format.toUpperCase() : '—' },
+					{ kind: 'text', label: 'File size', value: b ? formatBytes(b.fileBytes) : '—' },
+					{ kind: 'text', label: 'Size', value: b ? `${b.image.width} × ${b.image.height}` : '—' },
+					{ kind: 'text', label: 'Bit depth', value: b ? `${b.image.bitDepth}-bit` : '—' },
+					{ kind: 'text', label: 'Channels', value: b ? CHANNELS[b.image.channels] : '—' },
 					{ kind: 'category', label: 'Settings' },
 					convention('Convention', s.base.convention, (c) => (s.base.convention = c)),
 					{
@@ -232,6 +277,7 @@
 						set: (x) => (s.base.strength = x)
 					}
 				];
+			}
 			case 'detail':
 				return [
 					{ kind: 'category', label: 'File' },
@@ -240,18 +286,37 @@
 		}
 	});
 
-	const status: StatusSegment[] = $derived([
-		{ text: 'No image', width: 140 },
-		{ text: '—', width: 90 },
-		{ text: `${Math.round(app.view.zoom * 100)}%`, width: 50 },
-		{ text: gpuText, grow: true },
-		{ text: '', width: 60 }
-	]);
+	const status: StatusSegment[] = $derived.by(() => {
+		const b = app.base;
+		return [
+			{ text: app.busy ?? (b ? `${b.image.width}×${b.image.height}` : 'No image'), width: 140 },
+			{ text: b ? `${b.image.bitDepth}-bit ${b.format.toUpperCase()}` : '—', width: 90 },
+			{ text: b ? `${Math.round(app.view.zoom * 100)}%` : '—', width: 50 },
+			{ text: gpuText, grow: true },
+			{ text: b && app.processMs !== null ? `${app.processMs.toFixed(1)} ms` : '', width: 60 }
+		];
+	});
 </script>
+
+<svelte:window
+	ondragover={(e) => {
+		if (!e.dataTransfer?.types.includes('Files')) return;
+		e.preventDefault();
+		e.dataTransfer.dropEffect = canOpen ? 'copy' : 'none';
+	}}
+	ondrop={(e) => {
+		const file = e.dataTransfer?.files[0];
+		if (!file) return;
+		e.preventDefault();
+		if (canOpen) app.open(file);
+	}}
+/>
+
+<input bind:this={fileInput} type="file" accept=".png,.tga,image/png" hidden onchange={onFileChosen} />
 
 {#snippet viewer()}
 	<Pane title="Viewer">
-		<div class="viewer">No image loaded</div>
+		<Viewer {app} />
 	</Pane>
 {/snippet}
 
@@ -276,17 +341,23 @@
 <MenuBar {menus} />
 
 <Toolbar label="Standard">
-	<ToolButton icon="open" label="Open Base Map (Ctrl+O)" disabled />
-	<ToolButton icon="save" label="Export (Ctrl+E)" disabled />
+	<ToolButton icon="open" label="Open Base Map (Ctrl+O)" disabled={!canOpen} onclick={chooseFile} />
+	<ToolButton icon="save" label="Export (Ctrl+E)" disabled={!canExport} onclick={() => (exportOpen = true)} />
 	<ToolSeparator />
-	<ToolButton icon="flipGreen" label="Flip Green (Ctrl+G)" disabled />
+	<ToolButton
+		icon="flipGreen"
+		label="Flip Green (Ctrl+G)"
+		pressed={flipping}
+		disabled={!hasImage}
+		onclick={() => app.flipGreen()}
+	/>
 	<ToolSeparator />
 	<ToolButton icon="pan" label="Pan" pressed={app.view.tool === 'pan'} onclick={() => (app.view.tool = 'pan')} />
 	<ToolButton icon="light" label="Light Direction" pressed={false} disabled />
 	<ToolSeparator />
-	<ToolButton icon="zoomOut" label="Zoom Out (Ctrl+-)" onclick={() => app.zoomOut()} />
-	<ToolButton icon="zoomIn" label="Zoom In (Ctrl++)" onclick={() => app.zoomIn()} />
-	<ToolButton icon="zoomFit" label="Fit (Ctrl+0)" onclick={() => app.zoomFit()} />
+	<ToolButton icon="zoomOut" label="Zoom Out (Ctrl+-)" disabled={!hasImage} onclick={() => app.zoomOut()} />
+	<ToolButton icon="zoomIn" label="Zoom In (Ctrl++)" disabled={!hasImage} onclick={() => app.zoomIn()} />
+	<ToolButton icon="zoomFit" label="Fit (Ctrl+0)" disabled={!hasImage} onclick={() => app.zoomFit()} />
 	<ToolSeparator />
 	<span class="tb-label" class:disabled={app.view.mode !== 'wipe'}>Lit</span>
 	<Trackbar bind:value={app.view.wipe} label="Wipe position" width={110} disabled={app.view.mode !== 'wipe'} />
@@ -328,7 +399,7 @@
 		<Icon name="normalMap" size={32} />
 		<div>
 			<p><b>AGR Normal Map Editor</b><br />Version 0.1</p>
-			<p>Adjusts, converts and blends normal maps on your GPU. Everything runs in your browser; images never leave
+			<p>Adjusts, converts and blends normal maps on your GPU. Everything runs in your browser and images never leave
 				your computer.</p>
 			<hr class="w2k-etched" />
 			<p>&copy; 2026 AGR Holdings LLC</p>
@@ -338,6 +409,17 @@
 		<Button default onclick={() => (aboutOpen = false)}>OK</Button>
 	{/snippet}
 </Dialog>
+
+<ExportDialog {app} bind:open={exportOpen} />
+
+<DiagnosticsDialog bind:open={diagnosticsOpen} />
+
+<MessageBox open={app.error !== null} title="AGR Normal Map Editor" icon="error" onclose={() => (app.error = null)}>
+	<p>{app.error}</p>
+	{#snippet buttons()}
+		<Button default onclick={() => (app.error = null)}>OK</Button>
+	{/snippet}
+</MessageBox>
 
 <MessageBox
 	open={gpuProblem?.state === 'failed'}
@@ -392,14 +474,6 @@
 		display: grid;
 		min-width: 0;
 		min-height: 0;
-	}
-
-	.viewer {
-		display: grid;
-		place-items: center;
-		height: 100%;
-		background: var(--workspace);
-		color: var(--face);
 	}
 
 	.pixel-info {

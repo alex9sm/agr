@@ -11,6 +11,7 @@ export { default as PropertyGrid } from './PropertyGrid.svelte';
 export { default as Select } from './Select.svelte';
 export { default as Splitter } from './Splitter.svelte';
 export { default as StatusBar } from './StatusBar.svelte';
+export { default as TextField } from './TextField.svelte';
 export { default as ToolButton } from './ToolButton.svelte';
 export { default as ToolSeparator } from './ToolSeparator.svelte';
 export { default as Toolbar } from './Toolbar.svelte';

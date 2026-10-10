@@ -25,6 +25,22 @@ export function computePipeline(
 	return device.createComputePipelineAsync({ label, layout: 'auto', compute: { module, entryPoint: 'main', constants } });
 }
 
+/** Render pipeline with `vs` / `fs` entry points drawing to one color target. */
+export function renderPipeline(
+	device: GPUDevice,
+	module: GPUShaderModule,
+	label: string,
+	format: GPUTextureFormat
+): Promise<GPURenderPipeline> {
+	return device.createRenderPipelineAsync({
+		label,
+		layout: 'auto',
+		vertex: { module, entryPoint: 'vs' },
+		fragment: { module, entryPoint: 'fs', targets: [{ format }] },
+		primitive: { topology: 'triangle-list' }
+	});
+}
+
 /** Bind group whose entries are numbered in order: `[a, b]` binds a at 0 and b at 1. */
 export function bindGroup(
 	device: GPUDevice,

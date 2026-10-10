@@ -32,9 +32,8 @@ export function decodeImage(bytes: Uint8Array, name = ''): DecodedImage {
 	if (format === 'png') return { format, image: decodePng(bytes) };
 	if (format === 'tga') return { format, image: decodeTga(bytes) };
 	const other = otherFormat(bytes);
-	const file = name ? `"${name}"` : 'This file';
 	throw new ImageFormatError(
-		other ? `${file} is a ${other} image. Only PNG and TGA files are supported.` : `${file} is not a PNG or TGA image.`
+		other ? `It is a ${other} image; only PNG and TGA files are supported.` : 'It is not a PNG or TGA image.'
 	);
 }
 

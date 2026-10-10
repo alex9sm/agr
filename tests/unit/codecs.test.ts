@@ -22,8 +22,8 @@ describe('format detection', () => {
 	it('names formats it does not support', () => {
 		const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...Array(30).fill(0)]);
 		expect(() => decodeImage(jpeg, 'photo.jpg')).toThrow(ImageFormatError);
-		expect(() => decodeImage(jpeg, 'photo.jpg')).toThrow('"photo.jpg" is a JPEG image');
-		expect(() => decodeImage(new Uint8Array([1, 2, 3]), 'notes.txt')).toThrow('is not a PNG or TGA image');
+		expect(() => decodeImage(jpeg, 'photo.jpg')).toThrow('It is a JPEG image');
+		expect(() => decodeImage(new Uint8Array([1, 2, 3]), 'notes.txt')).toThrow('It is not a PNG or TGA image');
 	});
 });
 
