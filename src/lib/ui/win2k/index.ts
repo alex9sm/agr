@@ -4,6 +4,7 @@ export { default as Button } from './Button.svelte';
 export { default as Checkbox } from './Checkbox.svelte';
 export { default as Dialog } from './Dialog.svelte';
 export { default as MenuBar } from './MenuBar.svelte';
+export { default as MessageBox } from './MessageBox.svelte';
 export { default as NumberField } from './NumberField.svelte';
 export { default as Pane } from './Pane.svelte';
 export { default as PropertyGrid } from './PropertyGrid.svelte';

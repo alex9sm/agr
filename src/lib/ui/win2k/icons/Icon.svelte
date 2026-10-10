@@ -1,20 +1,30 @@
 <script lang="ts">
 	import { icons, type IconName } from './icons';
-	import { toPaths, toSilhouette } from './pixels';
+	import { gridHeight, gridWidth, toPaths, toSilhouette } from './pixels';
 
 	interface Props {
 		name: IconName;
 		/** Embossed gray silhouette, as Win2000 draws disabled toolbar icons. */
 		disabled?: boolean;
-		/** Rendered size in px; pixels scale up crisply. */
+		/** Rendered width in px (defaults to the icon's own size); pixels scale up crisply. */
 		size?: number;
 	}
-	let { name, disabled = false, size = 16 }: Props = $props();
+	let { name, disabled = false, size }: Props = $props();
 
 	const grid = $derived(icons[name]);
+	const w = $derived(gridWidth(grid));
+	const h = $derived(gridHeight(grid));
+	const scale = $derived((size ?? w) / w);
 </script>
 
-<svg class="w2k-icon" width={size} height={size} viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+<svg
+	class="w2k-icon"
+	width={w * scale}
+	height={h * scale}
+	viewBox="0 0 {w} {h}"
+	shape-rendering="crispEdges"
+	aria-hidden="true"
+>
 	{#if disabled}
 		{@const d = toSilhouette(grid)}
 		<path {d} fill="var(--hilite)" transform="translate(1 1)" />

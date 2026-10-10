@@ -1,4 +1,5 @@
 // Normal Map Editor state. `Settings` change the output (and will be undoable); `View` only changes the display.
+import { initGpu, type Gpu, type GpuFailure } from '$lib/gpu/device';
 
 export type Convention = 'opengl' | 'directx';
 export type BlendMethod = 'rnm' | 'whiteout' | 'udn' | 'linear';
@@ -45,6 +46,12 @@ export const defaultView = (): View => ({
 	tool: 'pan'
 });
 
+export type GpuStatus =
+	| { state: 'starting' }
+	| { state: 'ready'; gpu: Gpu }
+	| { state: 'failed'; failure: GpuFailure }
+	| { state: 'lost'; message: string };
+
 /** Zoom presets, as in classic image viewers. */
 export const ZOOM_STEPS = [1 / 16, 1 / 8, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 1, 1.5, 2, 3, 4, 6, 8, 16, 32];
 
@@ -53,6 +60,22 @@ export class NormalMapState {
 	view = $state(defaultView());
 	/** Node selected in the Layers tree; picks what the property grid shows. */
 	layer = $state<LayerId>('output');
+	/** Raw: holds a GPUDevice, which must not be proxied. Each change is a new object. */
+	gpuStatus = $state.raw<GpuStatus>({ state: 'starting' });
+
+	/** Acquire the GPU, replacing any current device (also used to recover from a lost device). */
+	async startGpu() {
+		this.stopGpu();
+		this.gpuStatus = { state: 'starting' };
+		const result = await initGpu({
+			onLost: (message) => (this.gpuStatus = { state: 'lost', message })
+		});
+		this.gpuStatus = result.ok ? { state: 'ready', gpu: result } : { state: 'failed', failure: result };
+	}
+
+	stopGpu() {
+		if (this.gpuStatus.state === 'ready') this.gpuStatus.gpu.destroy();
+	}
 
 	resetSettings() {
 		this.settings = defaultSettings();

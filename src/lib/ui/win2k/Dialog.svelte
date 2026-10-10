@@ -1,4 +1,7 @@
-<!-- Modal dialog on <dialog>: focus trapping and Esc come from the browser. Drag it by the title bar. -->
+<!--
+	Modal dialog on <dialog>: the browser traps focus. `open` is the source of truth; Esc and the
+	title-bar X set it to false. (The native close event can arrive late, e.g. while the page is hidden.)
+-->
 <script lang="ts">
 	import { onDestroy, untrack, type Snippet } from 'svelte';
 	import Glyph from './icons/Glyph.svelte';
@@ -11,34 +14,57 @@
 		children: Snippet;
 		/** Button row; mark one `<Button default>` to focus it on open. */
 		buttons?: Snippet;
+		/** Center the button row (message boxes) instead of right-aligning it. */
+		centerButtons?: boolean;
+		/** The user dismissed the dialog with Esc or the title-bar X. */
 		onclose?: () => void;
 	}
-	let { open = $bindable(false), title, width, children, buttons, onclose }: Props = $props();
+	let { open = $bindable(false), title, width, children, buttons, centerButtons = false, onclose }: Props = $props();
 
 	const uid = $props.id();
 	let el: HTMLDialogElement;
 	let offset = $state<[number, number]>([0, 0]);
 	let drag: { x: number; y: number; from: [number, number] } | null = null;
 
+	// Whether this dialog is counted in `modal.count`.
+	let counted = false;
+	const hold = () => {
+		if (!counted) untrack(() => modal.count++);
+		counted = true;
+	};
+	const release = () => {
+		if (counted) untrack(() => modal.count--);
+		counted = false;
+	};
+
 	$effect(() => {
 		if (open && !el.open) {
 			offset = [0, 0];
 			el.showModal();
-			untrack(() => modal.count++);
+			hold();
 			el.querySelector<HTMLElement>('.w2k-button.default')?.focus();
 		} else if (!open && el.open) {
 			el.close();
+			release();
 		}
 	});
 
-	onDestroy(() => {
-		if (el?.open) modal.count--;
-	});
+	onDestroy(release);
 
-	function closed() {
-		modal.count--;
+	function dismiss() {
 		open = false;
 		onclose?.();
+	}
+
+	function oncancel(e: Event) {
+		e.preventDefault();
+		dismiss();
+	}
+
+	/** Closed some other way (a form with method="dialog", or a second Esc the browser forces through). */
+	function onNativeClose() {
+		release();
+		if (open) dismiss();
 	}
 
 	function dragStart(e: PointerEvent) {
@@ -58,7 +84,8 @@
 	aria-labelledby="{uid}-title"
 	style:translate="{offset[0]}px {offset[1]}px"
 	style:width={width ? `${width}px` : undefined}
-	onclose={closed}
+	{oncancel}
+	onclose={onNativeClose}
 >
 	<div
 		class="w2k-titlebar"
@@ -69,13 +96,13 @@
 		onpointercancel={() => (drag = null)}
 	>
 		<span class="title" id="{uid}-title">{title}</span>
-		<button type="button" class="w2k-captionbutton" aria-label="Close" onclick={() => (open = false)}>
+		<button type="button" class="w2k-captionbutton" aria-label="Close" onclick={dismiss}>
 			<Glyph name="close" />
 		</button>
 	</div>
 	<div class="body">{@render children()}</div>
 	{#if buttons}
-		<div class="buttons">{@render buttons()}</div>
+		<div class="buttons" class:center={centerButtons}>{@render buttons()}</div>
 	{/if}
 </dialog>
 
@@ -104,5 +131,8 @@
 		justify-content: flex-end;
 		gap: 6px;
 		padding: 8px 8px 7px;
+	}
+	.buttons.center {
+		justify-content: center;
 	}
 </style>

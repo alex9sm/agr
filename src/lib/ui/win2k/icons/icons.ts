@@ -1,4 +1,4 @@
-// 16×16 icons, drawn as text in the classic 16-color palette plus normal-map blues.
+// Icons: 16×16 drawn as text in the classic 16-color palette plus normal-map blues; 32×32 message box icons drawn by function.
 import { fromRows, type Grid } from './pixels';
 
 const palette = {
@@ -18,6 +18,32 @@ const palette = {
 
 const icon = (rows: string[]) => fromRows(rows, palette);
 
+/** 32×32 grid from a per-pixel function of the offset from the center. */
+function drawn32(color: (dx: number, dy: number) => string | null): Grid {
+	return Array.from({ length: 32 }, (_, y) => Array.from({ length: 32 }, (_, x) => color(x - 15.5, y - 15.5)));
+}
+
+/** Message box error icon: red disc, white X, gray drop shadow. */
+const errorIcon = drawn32((dx, dy) => {
+	const r = Math.hypot(dx, dy);
+	if (r <= 12.5) {
+		const onX = Math.abs(dx) <= 6.5 && (Math.abs(dx - dy) <= 1.6 || Math.abs(dx + dy) <= 1.6);
+		return onX ? '#ffffff' : '#ff0000';
+	}
+	if (r <= 13.5) return '#800000';
+	return Math.hypot(dx - 2, dy - 2) <= 13.5 ? '#808080' : null;
+});
+
+/** Message box warning icon: yellow triangle, black outline and exclamation mark. */
+const warningIcon = drawn32((dx, dy) => {
+	const y = dy + 15.5;
+	const half = ((y - 2) / 26) * 14; // half-width of the triangle at this row
+	if (y < 2 || y > 28 || Math.abs(dx) > half) return null;
+	if (Math.abs(dx) > half - 1.8 || y > 26.5) return '#000000';
+	const bang = Math.abs(dx) <= 1.5 && ((y >= 9 && y <= 19) || (y >= 22 && y <= 24.5));
+	return bang ? '#000000' : '#ffff00';
+});
+
 /** A sphere whose pixels are its own normals: the app icon. */
 function normalSphere(): Grid {
 	const channel = (v: number) => Math.round((v * 0.5 + 0.5) * 255).toString(16).padStart(2, '0');
@@ -34,6 +60,8 @@ function normalSphere(): Grid {
 
 export const icons = {
 	normalMap: normalSphere(),
+	error: errorIcon,
+	warning: warningIcon,
 	open: icon([
 		'................',
 		'................',

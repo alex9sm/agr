@@ -1,11 +1,13 @@
 <!-- Normal Map Editor shell: menus, toolbar, Layers / Properties / Viewer / Pixel Info panes, status bar. -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import {
 		Button,
 		Dialog,
 		Icon,
 		MenuBar,
+		MessageBox,
 		Pane,
 		PropertyGrid,
 		Select,
@@ -27,6 +29,29 @@
 
 	const app = new NormalMapState();
 	const narrow = new MediaQuery('(max-width: 899px)', false);
+
+	onMount(() => {
+		app.startGpu();
+		// Dev only: inspect and poke the state from the console.
+		if (import.meta.env.DEV) Object.assign(window, { nmApp: app });
+		return () => app.stopGpu();
+	});
+
+	/** GPU failure or loss the user hasn't dismissed yet. Raw: compared by identity, so it must not be proxied. */
+	let dismissedGpuStatus = $state.raw<object | null>(null);
+	const gpuProblem = $derived(
+		(app.gpuStatus.state === 'failed' || app.gpuStatus.state === 'lost') && app.gpuStatus !== dismissedGpuStatus
+			? app.gpuStatus
+			: null
+	);
+	const dismissGpuProblem = () => (dismissedGpuStatus = app.gpuStatus);
+
+	const gpuText = $derived.by(() => {
+		const s = app.gpuStatus;
+		if (s.state === 'starting') return 'GPU: starting…';
+		if (s.state === 'ready') return `GPU: ${s.gpu.adapterName}`;
+		return s.state === 'lost' ? 'GPU: device lost' : 'GPU: unavailable';
+	});
 
 	let aboutOpen = $state(false);
 	let sideWidth = $state(240);
@@ -219,7 +244,7 @@
 		{ text: 'No image', width: 140 },
 		{ text: '—', width: 90 },
 		{ text: `${Math.round(app.view.zoom * 100)}%`, width: 50 },
-		{ text: 'GPU: not initialized', grow: true },
+		{ text: gpuText, grow: true },
 		{ text: '', width: 60 }
 	]);
 </script>
@@ -314,6 +339,40 @@
 	{/snippet}
 </Dialog>
 
+<MessageBox
+	open={gpuProblem?.state === 'failed'}
+	title="AGR Normal Map Editor"
+	icon="error"
+	onclose={dismissGpuProblem}
+>
+	{#if gpuProblem?.state === 'failed'}<p>{gpuProblem.failure.message}</p>{/if}
+	<p>The rest of the AGR site works in any browser.</p>
+	{#snippet buttons()}
+		<Button default onclick={dismissGpuProblem}>OK</Button>
+	{/snippet}
+</MessageBox>
+
+<MessageBox
+	open={gpuProblem?.state === 'lost'}
+	title="AGR Normal Map Editor"
+	icon="warning"
+	onclose={dismissGpuProblem}
+>
+	<p>The graphics device was lost. This can happen when the GPU driver is updated, crashes or is reset.</p>
+	{#if gpuProblem?.state === 'lost'}<p class="detail">{gpuProblem.message}</p>{/if}
+	<p>Reinitialize the GPU to continue.</p>
+	{#snippet buttons()}
+		<Button
+			default
+			onclick={() => {
+				dismissGpuProblem();
+				app.startGpu();
+			}}>Reinitialize</Button
+		>
+		<Button onclick={dismissGpuProblem}>Close</Button>
+	{/snippet}
+</MessageBox>
+
 <style>
 	.tb-label {
 		padding: 0 4px;
@@ -389,5 +448,8 @@
 	}
 	.about p {
 		margin: 0 0 8px;
+	}
+	.detail {
+		color: var(--gray-text);
 	}
 </style>
