@@ -1,12 +1,5 @@
-<!-- Placeholder until Phase 1 (Win2000 UI kit + tool shell). -->
-<div class="placeholder">
-	<p>The Normal Map Editor is under construction.</p>
-</div>
+<script lang="ts">
+	import NormalMapApp from './NormalMapApp.svelte';
+</script>
 
-<style>
-	.placeholder {
-		display: grid;
-		place-items: center;
-		height: 100%;
-	}
-</style>
+<NormalMapApp />

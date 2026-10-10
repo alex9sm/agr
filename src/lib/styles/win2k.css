@@ -1,0 +1,164 @@
+/* Windows 2000 look for tool pages: tokens, bevels, scrollbars, shared chrome. */
+
+:root {
+  --face: #d4d0c8;
+  --hilite: #ffffff;
+  --light: #e4e0d8;
+  --shadow: #808080;
+  --dkshadow: #404040;
+  --title-a: #0a246a;
+  --title-b: #a6caf0;
+  --title-inactive-a: #808080;
+  --title-inactive-b: #c0c0c0;
+  --title-inactive-text: #d4d0c8;
+  --select: #0a246a;
+  --select-text: #ffffff;
+  --window: #ffffff;
+  --workspace: #808080;
+  --text: #000000;
+  --gray-text: #808080;
+  --font: Tahoma, "MS Sans Serif", Geneva, sans-serif;
+  --mono: "Courier New", Courier, monospace;
+
+  /* Bevels are box-shadow stacks; the first shadow is the outermost ring. */
+  --raised:         inset -1px -1px var(--dkshadow), inset 1px 1px var(--hilite), inset -2px -2px var(--shadow), inset 2px 2px var(--light);
+  --raised-window:  inset -1px -1px var(--dkshadow), inset 1px 1px var(--light), inset -2px -2px var(--shadow), inset 2px 2px var(--hilite);
+  --raised-default: inset 0 0 0 1px #000, inset -2px -2px var(--dkshadow), inset 2px 2px var(--hilite), inset -3px -3px var(--shadow), inset 3px 3px var(--light);
+  --sunken:         inset 1px 1px var(--shadow), inset -1px -1px var(--hilite), inset 2px 2px var(--dkshadow), inset -2px -2px var(--light);
+  --pressed:        inset 1px 1px var(--dkshadow), inset -1px -1px var(--hilite), inset 2px 2px var(--shadow), inset -2px -2px var(--light);
+  --raised-thin:    inset -1px -1px var(--shadow), inset 1px 1px var(--hilite);
+  --sunken-thin:    inset 1px 1px var(--shadow), inset -1px -1px var(--hilite);
+  --header:         inset -1px -1px var(--dkshadow), inset 1px 1px var(--hilite), inset -2px -2px var(--shadow);
+
+  /* 50% checkerboard of face and white: checked toolbar buttons, scrollbar tracks. */
+  --dither: repeating-conic-gradient(var(--face) 0 25%, var(--hilite) 0 50%) 0 0 / 2px 2px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--face);
+  color: var(--text);
+  font: 11px/1.25 var(--font);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* --- Utilities --- */
+
+.w2k-raised { box-shadow: var(--raised); }
+.w2k-sunken { box-shadow: var(--sunken); }
+.w2k-raised-thin { box-shadow: var(--raised-thin); }
+.w2k-sunken-thin { box-shadow: var(--sunken-thin); }
+
+/* Embossed gray text of disabled controls. */
+.w2k-disabled-text {
+  color: var(--shadow);
+  text-shadow: 1px 1px var(--hilite);
+}
+
+/* Etched horizontal rule, as in dialogs. */
+.w2k-etched {
+  height: 2px;
+  margin: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--shadow);
+  border-bottom: 1px solid var(--hilite);
+}
+
+/* --- Title bars (app window and dialogs) --- */
+
+.w2k-titlebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 2px;
+  overflow: hidden;
+  background: linear-gradient(to right, var(--title-a), var(--title-b));
+  color: #fff;
+  font-weight: bold;
+  white-space: nowrap;
+}
+.w2k-titlebar.inactive {
+  background: linear-gradient(to right, var(--title-inactive-a), var(--title-inactive-b));
+  color: var(--title-inactive-text);
+}
+.w2k-titlebar .title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+/* Small raised buttons that sit in a title bar (close, back). */
+.w2k-captionbutton {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 3px;
+  border: 0;
+  background: var(--face);
+  box-shadow: var(--raised);
+  color: var(--text);
+  font: normal 11px/1 var(--font);
+  text-decoration: none;
+  cursor: default;
+}
+.w2k-captionbutton:active { box-shadow: var(--pressed); }
+.w2k-captionbutton:active > * { translate: 1px 1px; }
+.w2k-captionbutton:focus-visible { outline: 1px dotted #000; outline-offset: -3px; }
+
+/* --- Scrollbars --- */
+
+::-webkit-scrollbar { width: 16px; height: 16px; }
+::-webkit-scrollbar-track { background: var(--dither); }
+::-webkit-scrollbar-thumb { background: var(--face); box-shadow: var(--raised-window); }
+::-webkit-scrollbar-corner { background: var(--face); }
+::-webkit-scrollbar-button:single-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-color: var(--face);
+  background-repeat: no-repeat;
+  box-shadow: var(--raised-window);
+}
+::-webkit-scrollbar-button:single-button:active {
+  background-position: 1px 1px;
+  box-shadow: inset 0 0 0 1px var(--shadow);
+}
+::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M7 6h1v1h1v1h1v1h1v1h-7v-1h1v-1h1v-1h1z'/%3E%3C/svg%3E");
+}
+::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M4 6h7v1h-1v1h-1v1h-1v1h-1v-1h-1v-1h-1v-1h-1z'/%3E%3C/svg%3E");
+}
+::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M6 7h1v-1h1v-1h1v-1h1v7h-1v-1h-1v-1h-1v-1h-1z'/%3E%3C/svg%3E");
+}
+::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M6 4h1v1h1v1h1v1h1v1h-1v1h-1v1h-1v1h-1z'/%3E%3C/svg%3E");
+}
+
+/* Firefox has no ::-webkit-scrollbar; get close with colors. */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-color: var(--face) #ece9e4; }
+}

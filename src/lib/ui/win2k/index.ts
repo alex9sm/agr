@@ -1,0 +1,23 @@
+// Windows 2000 UI kit shared by all tools. Pages using it import '$lib/styles/win2k.css' once.
+export { default as AppWindow } from './AppWindow.svelte';
+export { default as Button } from './Button.svelte';
+export { default as Checkbox } from './Checkbox.svelte';
+export { default as Dialog } from './Dialog.svelte';
+export { default as MenuBar } from './MenuBar.svelte';
+export { default as NumberField } from './NumberField.svelte';
+export { default as Pane } from './Pane.svelte';
+export { default as PropertyGrid } from './PropertyGrid.svelte';
+export { default as Select } from './Select.svelte';
+export { default as Splitter } from './Splitter.svelte';
+export { default as StatusBar } from './StatusBar.svelte';
+export { default as ToolButton } from './ToolButton.svelte';
+export { default as ToolSeparator } from './ToolSeparator.svelte';
+export { default as Toolbar } from './Toolbar.svelte';
+export { default as Trackbar } from './Trackbar.svelte';
+export { default as TreeView } from './TreeView.svelte';
+export { default as Glyph } from './icons/Glyph.svelte';
+export { default as Icon } from './icons/Icon.svelte';
+export type { IconName } from './icons/icons';
+export type { GlyphName } from './icons/glyphs';
+export type { MenuDef, MenuEntry, MenuItem } from './menu';
+export type { Property, SelectOption, StatusSegment, TreeNode } from './types';
