@@ -7,7 +7,7 @@
 	interface Props {
 		open?: boolean;
 		title: string;
-		icon: 'error' | 'warning';
+		icon: 'error' | 'warning' | 'question';
 		width?: number;
 		children: Snippet;
 		/** Mark one `<Button default>`. */

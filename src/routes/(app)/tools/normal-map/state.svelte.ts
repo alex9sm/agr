@@ -5,22 +5,25 @@ import { fromRGBA16 } from '$lib/image/convert';
 import { download } from '$lib/image/download';
 import type { ImageBuffer, ImageFormat } from '$lib/image/types';
 import { domeRadius, lightAtPoint } from './lighting';
-import { processParams } from './normalmap';
+import { processParams, type BlendMethod } from './normalmap';
 import { Renderer } from './renderer';
 
+export type { BlendMethod };
 export type Convention = 'opengl' | 'directx';
-export type BlendMethod = 'rnm' | 'whiteout' | 'udn' | 'linear';
 export type LayerId = 'output' | 'base' | 'detail';
+
+export interface DetailSettings {
+	convention: Convention;
+	strength: number;
+	method: BlendMethod;
+	tiling: [number, number];
+	offset: [number, number];
+}
 
 export interface Settings {
 	base: { convention: Convention; strength: number };
-	detail: {
-		convention: Convention;
-		strength: number;
-		method: BlendMethod;
-		tiling: [number, number];
-		offset: [number, number];
-	} | null;
+	/** Present exactly while a detail map is open. */
+	detail: DetailSettings | null;
 	output: { convention: Convention; format: 'png' | 'tga'; bitDepth: 8 | 16 };
 }
 
@@ -41,6 +44,15 @@ export const defaultSettings = (): Settings => ({
 	base: { convention: 'opengl', strength: 1 },
 	detail: null,
 	output: { convention: 'opengl', format: 'png', bitDepth: 16 }
+});
+
+/** A new detail map is assumed to share the base map's convention. */
+export const defaultDetail = (convention: Convention = 'opengl'): DetailSettings => ({
+	convention,
+	strength: 1,
+	method: 'rnm',
+	tiling: [1, 1],
+	offset: [0, 0]
 });
 
 export const defaultView = (): View => ({
@@ -87,6 +99,7 @@ export class NormalMapState {
 	gpuStatus = $state.raw<GpuStatus>({ state: 'starting' });
 	renderer = $state.raw<Renderer | null>(null);
 	base = $state.raw<SourceImage | null>(null);
+	detail = $state.raw<SourceImage | null>(null);
 	/** Viewer canvas size in device pixels. */
 	viewerSize = $state.raw<[number, number]>([0, 0]);
 	/** Wall time of the last processing pass. */
@@ -114,7 +127,7 @@ export class NormalMapState {
 		try {
 			const renderer = await Renderer.create(result.device);
 			renderer.onProcessed = (ms) => (this.processMs = ms);
-			if (this.base) await this.restoreBase(renderer, this.base);
+			await this.restoreImages(renderer);
 			this.renderer = renderer;
 			this.gpuStatus = { state: 'ready', gpu: result };
 		} catch (err) {
@@ -124,12 +137,21 @@ export class NormalMapState {
 		}
 	}
 
-	private async restoreBase(renderer: Renderer, base: SourceImage) {
+	/** Re-upload the open images to a new renderer, after a lost device. */
+	private async restoreImages(renderer: Renderer) {
+		const { base, detail } = this;
 		try {
-			await renderer.setBase(base.image);
+			if (base) await renderer.setBase(base.image);
 		} catch (err) {
-			this.base = null;
-			this.error = `${base.name} could not be restored on the GPU: ${messageOf(err)}`;
+			this.close();
+			this.error = `${base!.name} could not be restored on the GPU: ${messageOf(err)}`;
+			return;
+		}
+		try {
+			if (detail) await renderer.setDetail(detail.image);
+		} catch (err) {
+			this.closeDetail();
+			this.error = `${detail!.name} could not be restored on the GPU: ${messageOf(err)}`;
 		}
 	}
 
@@ -139,31 +161,61 @@ export class NormalMapState {
 		if (this.gpuStatus.state === 'ready') this.gpuStatus.gpu.destroy();
 	}
 
-	async open(file: File) {
+	/** Decode a file and hand it to the renderer with `upload`. Reports failures and returns null. */
+	private async load(
+		file: File,
+		upload: (renderer: Renderer, image: ImageBuffer) => Promise<void>
+	): Promise<SourceImage | null> {
 		const renderer = this.renderer;
 		if (!renderer) {
 			this.error = 'Images can only be opened while the GPU is available.';
-			return;
+			return null;
 		}
 		this.busy = `Opening ${file.name}…`;
 		try {
 			const { format, image } = await decodeFile(file);
-			if (this.renderer !== renderer) return; // the device changed while decoding
-			await renderer.setBase(image);
-			this.base = { name: file.name, format, fileBytes: file.size, image };
-			this.applySourceDefaults();
-			this.zoomInitial();
+			if (this.renderer !== renderer) return null; // the device changed while decoding
+			await upload(renderer, image);
+			return { name: file.name, format, fileBytes: file.size, image };
 		} catch (err) {
 			this.error = `Cannot open ${file.name}. ${messageOf(err)}`;
+			return null;
 		} finally {
 			this.busy = null;
 		}
 	}
 
+	/** Open a base map. An open detail map stays and tiles over the new base. */
+	async open(file: File) {
+		const base = await this.load(file, (renderer, image) => renderer.setBase(image));
+		if (!base) return;
+		this.base = base;
+		this.applySourceDefaults();
+		this.zoomInitial();
+	}
+
+	/** Open a detail map (needs a base map). Its settings carry over when it replaces another detail map. */
+	async openDetail(file: File) {
+		if (!this.base) return;
+		const detail = await this.load(file, (renderer, image) => renderer.setDetail(image));
+		if (!detail) return;
+		this.detail = detail;
+		this.settings.detail ??= defaultDetail(this.settings.base.convention);
+		this.layer = 'detail';
+	}
+
+	/** Close both maps. */
 	close() {
+		this.closeDetail();
 		this.base = null;
 		this.renderer?.clearBase();
 		this.processMs = null;
+	}
+
+	closeDetail() {
+		this.detail = null;
+		this.settings.detail = null;
+		this.renderer?.clearDetail();
 	}
 
 	/** Export defaults follow the source: same format, same bit depth. */
@@ -199,6 +251,7 @@ export class NormalMapState {
 	resetSettings() {
 		this.settings = defaultSettings();
 		this.applySourceDefaults();
+		if (this.detail) this.settings.detail = defaultDetail();
 	}
 
 	/** Flip G: switch the output convention between OpenGL and DirectX. */

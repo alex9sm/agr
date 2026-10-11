@@ -1,12 +1,12 @@
 // Owns the tool's GPU resources and runs the passes:
-//   base (rgba16uint) ─ process.wgsl ─► output (rgba16uint) ─ display.wgsl ─► canvas
+//   base + detail (rgba16uint) ─ process.wgsl ─► output (rgba16uint) ─ display.wgsl ─► canvas
 // Settings changes re-run both passes, view changes only the display pass; either way at most once per frame.
 import { bindGroup, computePipeline, createShader, renderPipeline, workgroupCount } from '$lib/gpu/pipeline';
 import { readImageTexture } from '$lib/gpu/readback';
 import { createImageTexture, imageSizeProblem, uploadImage } from '$lib/gpu/textures';
 import type { ImageBuffer } from '$lib/image/types';
 import { halfVector, lightVector, type Light } from './lighting';
-import type { ProcessParams } from './normalmap';
+import { BLEND_METHODS, type ProcessParams } from './normalmap';
 import displayWgsl from './display.wgsl?raw';
 import processWgsl from './process.wgsl?raw';
 
@@ -26,6 +26,7 @@ const BACKGROUND = { r: 0.502, g: 0.502, b: 0.502, a: 1 };
 
 export class Renderer {
 	private base: GPUTexture | null = null;
+	private detail: GPUTexture | null = null;
 	private output: GPUTexture | null = null;
 	private processBind: GPUBindGroup | null = null;
 	private displayBind: GPUBindGroup | null = null;
@@ -44,6 +45,8 @@ export class Renderer {
 	private frame = 0;
 	private readonly paramsBuffer: GPUBuffer;
 	private readonly viewBuffer: GPUBuffer;
+	/** Bound in the detail slot when there is no detail map. */
+	private readonly noDetail: GPUTexture;
 
 	/** Called with the wall time of each processing pass, in ms. */
 	onProcessed?: (ms: number) => void;
@@ -55,8 +58,9 @@ export class Renderer {
 		private readonly format: GPUTextureFormat
 	) {
 		const uniform = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
-		this.paramsBuffer = device.createBuffer({ label: 'process params', size: 16, usage: uniform });
+		this.paramsBuffer = device.createBuffer({ label: 'process params', size: 48, usage: uniform });
 		this.viewBuffer = device.createBuffer({ label: 'view', size: 64, usage: uniform });
+		this.noDetail = createImageTexture(device, 1, 1, 'no detail');
 	}
 
 	static async create(device: GPUDevice): Promise<Renderer> {
@@ -100,11 +104,7 @@ export class Renderer {
 		this.clearBase();
 		this.base = base;
 		this.output = output;
-		this.processBind = bindGroup(device, this.processPipeline, [
-			base.createView(),
-			output.createView(),
-			{ buffer: this.paramsBuffer }
-		]);
+		this.bindProcess();
 		this.displayBind = bindGroup(device, this.displayPipeline, [output.createView(), { buffer: this.viewBuffer }]);
 		this.invalidate(true);
 	}
@@ -115,6 +115,45 @@ export class Renderer {
 		this.base = this.output = null;
 		this.processBind = this.displayBind = null;
 		this.invalidate(false);
+	}
+
+	/** Upload a new detail map. Throws a user-facing Error if it doesn't fit on the GPU. */
+	async setDetail(image: ImageBuffer) {
+		const { device } = this;
+		const problem = imageSizeProblem(device, image.width, image.height);
+		if (problem) throw new Error(problem);
+
+		device.pushErrorScope('out-of-memory');
+		const detail = uploadImage(device, image, 'detail');
+		if (await device.popErrorScope()) {
+			detail.destroy();
+			throw new Error(`There is not enough GPU memory for a ${image.width}×${image.height} detail map.`);
+		}
+
+		this.detail?.destroy();
+		this.detail = detail;
+		this.bindProcess();
+		this.invalidate(true);
+	}
+
+	clearDetail() {
+		this.detail?.destroy();
+		this.detail = null;
+		this.bindProcess();
+		this.invalidate(true);
+	}
+
+	private bindProcess() {
+		const { base, output } = this;
+		this.processBind =
+			base && output
+				? bindGroup(this.device, this.processPipeline, [
+						base.createView(),
+						output.createView(),
+						{ buffer: this.paramsBuffer },
+						(this.detail ?? this.noDetail).createView()
+					])
+				: null;
 	}
 
 	setProcess(params: ProcessParams) {
@@ -167,10 +206,22 @@ export class Renderer {
 		this.needsProcess = false;
 		if (!this.base || !this.processBind) return;
 		const { device, params } = this;
-		const data = new DataView(new ArrayBuffer(16));
+		// Layout of Params in process.wgsl.
+		const data = new DataView(new ArrayBuffer(48));
 		data.setFloat32(0, params.strength, true);
 		data.setUint32(4, params.flipInput ? 1 : 0, true);
 		data.setUint32(8, params.flipOutput ? 1 : 0, true);
+		const detail = this.detail && params.detail;
+		if (detail) {
+			data.setUint32(12, 1, true);
+			data.setFloat32(16, detail.strength, true);
+			data.setUint32(20, detail.flipInput ? 1 : 0, true);
+			data.setUint32(24, BLEND_METHODS.indexOf(detail.method), true);
+			data.setFloat32(32, detail.tiling[0], true);
+			data.setFloat32(36, detail.tiling[1], true);
+			data.setFloat32(40, detail.offset[0], true);
+			data.setFloat32(44, detail.offset[1], true);
+		}
 		device.queue.writeBuffer(this.paramsBuffer, 0, data);
 
 		const encoder = device.createCommandEncoder({ label: 'process' });
@@ -232,6 +283,8 @@ export class Renderer {
 
 	destroy() {
 		this.clearBase();
+		this.clearDetail();
+		this.noDetail.destroy();
 		cancelAnimationFrame(this.frame);
 		this.frame = 0;
 		this.needsProcess = this.needsRender = false;

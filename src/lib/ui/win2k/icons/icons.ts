@@ -44,6 +44,33 @@ const warningIcon = drawn32((dx, dy) => {
 	return bang ? '#000000' : '#ffff00';
 });
 
+/** Question mark for questionIcon, placed at its center. */
+const QUESTION_MARK = [
+	'..xxxxxx..',
+	'.xxxxxxxx.',
+	'xxx....xxx',
+	'xxx....xxx',
+	'.......xxx',
+	'......xxx.',
+	'.....xxx..',
+	'....xxx...',
+	'....xxx...',
+	'..........',
+	'....xxx...',
+	'....xxx...'
+];
+
+/** Message box question icon: white disc, blue question mark, gray drop shadow. */
+const questionIcon = drawn32((dx, dy) => {
+	const r = Math.hypot(dx, dy);
+	if (r <= 12.5) {
+		const row = QUESTION_MARK[Math.floor(dy + 15.5) - 10];
+		return row?.[Math.floor(dx + 15.5) - 11] === 'x' ? '#0000ff' : '#ffffff';
+	}
+	if (r <= 13.5) return '#000000';
+	return Math.hypot(dx - 2, dy - 2) <= 13.5 ? '#808080' : null;
+});
+
 /** A sphere whose pixels are its own normals: the app icon. */
 function normalSphere(): Grid {
 	const channel = (v: number) => Math.round((v * 0.5 + 0.5) * 255).toString(16).padStart(2, '0');
@@ -62,6 +89,7 @@ export const icons = {
 	normalMap: normalSphere(),
 	error: errorIcon,
 	warning: warningIcon,
+	question: questionIcon,
 	open: icon([
 		'................',
 		'................',

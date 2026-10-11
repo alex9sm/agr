@@ -27,30 +27,52 @@
 	} from '$lib/ui/win2k';
 	import DiagnosticsDialog from './DiagnosticsDialog.svelte';
 	import ExportDialog from './ExportDialog.svelte';
+	import { BLEND_METHOD_NAMES, BLEND_METHODS } from './normalmap';
 	import Viewer from './Viewer.svelte';
-	import { MAX_SHININESS, NormalMapState, type Convention, type LayerId, type View } from './state.svelte';
+	import {
+		MAX_SHININESS,
+		NormalMapState,
+		type BlendMethod,
+		type Convention,
+		type LayerId,
+		type SourceImage,
+		type View
+	} from './state.svelte';
 
 	const app = new NormalMapState();
 	const narrow = new MediaQuery('(max-width: 899px)', false);
 
 	let fileInput: HTMLInputElement;
+	/** Which map the file picker is choosing. */
+	let fileTarget: 'base' | 'detail' = 'base';
 	let exportOpen = $state(false);
 	let diagnosticsOpen = $state(false);
+	/** A file dropped while a base map is open, waiting for the user to say which map it is. */
+	let droppedFile = $state.raw<File | null>(null);
 
 	const hasImage = $derived(app.base !== null);
 	const canOpen = $derived(app.renderer !== null && app.busy === null);
+	const canOpenDetail = $derived(canOpen && hasImage);
 	const canExport = $derived(hasImage && app.renderer !== null && app.busy === null);
 	/** Flip G is on when the output convention differs from the input's. */
 	const flipping = $derived(app.settings.output.convention !== app.settings.base.convention);
 
-	function chooseFile() {
-		if (canOpen) fileInput.click();
+	function chooseFile(target: 'base' | 'detail') {
+		if (!(target === 'base' ? canOpen : canOpenDetail)) return;
+		fileTarget = target;
+		fileInput.click();
 	}
 
 	function onFileChosen() {
 		const file = fileInput.files?.[0];
 		fileInput.value = ''; // so choosing the same file again still fires
-		if (file) app.open(file);
+		if (file) openAs(file, fileTarget);
+	}
+
+	function openAs(file: File, target: 'base' | 'detail') {
+		droppedFile = null;
+		if (target === 'detail') app.openDetail(file);
+		else app.open(file);
 	}
 
 	const CHANNELS = { 1: 'Gray', 2: 'Gray + alpha', 3: 'RGB', 4: 'RGBA' } as const;
@@ -101,10 +123,11 @@
 			icon: 'output',
 			children: [
 				{ id: 'base', label: 'Base map', icon: 'baseMap', note: app.base?.name ?? '[none]' },
-				{ id: 'detail', label: 'Detail map', icon: 'detailMap', note: '[none]' }
+				{ id: 'detail', label: 'Detail map', icon: 'detailMap', note: app.detail?.name ?? '[none]' }
 			]
 		}
 	]);
+	const blendMethods: SelectOption[] = BLEND_METHODS.map((m) => ({ value: m, label: BLEND_METHOD_NAMES[m] }));
 	const layerOptions: SelectOption[] = [
 		{ value: 'output', label: 'Output' },
 		{ value: 'base', label: 'Base map' },
@@ -123,11 +146,17 @@
 		{
 			label: '&File',
 			items: [
-				{ label: '&Open Base…', shortcut: 'Ctrl+O', disabled: !canOpen, action: chooseFile },
-				{ label: 'Open &Detail…', disabled: true },
+				{ label: '&Open Base…', shortcut: 'Ctrl+O', disabled: !canOpen, action: () => chooseFile('base') },
+				{
+					label: 'Open &Detail…',
+					shortcut: 'Ctrl+Shift+O',
+					disabled: !canOpenDetail,
+					action: () => chooseFile('detail')
+				},
 				'separator',
 				{ label: '&Export…', shortcut: 'Ctrl+E', disabled: !canExport, action: () => (exportOpen = true) },
 				'separator',
+				{ label: 'Close De&tail', disabled: !app.detail, action: () => app.closeDetail() },
 				{ label: '&Close', disabled: !hasImage, action: () => app.close() }
 			]
 		},
@@ -208,6 +237,25 @@
 			options: conventions,
 			set: (c) => set(c as Convention)
 		});
+		const strength = (value: number, set: (x: number) => void): Property => ({
+			kind: 'slider',
+			label: 'Strength',
+			value,
+			min: 0,
+			max: 5,
+			step: 0.05,
+			decimals: 2,
+			set
+		});
+		const fileRows = (f: SourceImage | null): Property[] => [
+			{ kind: 'category', label: 'File' },
+			{ kind: 'text', label: 'Name', value: f?.name ?? '(none)' },
+			{ kind: 'text', label: 'Format', value: f ? f.format.toUpperCase() : '—' },
+			{ kind: 'text', label: 'File size', value: f ? formatBytes(f.fileBytes) : '—' },
+			{ kind: 'text', label: 'Size', value: f ? `${f.image.width} × ${f.image.height}` : '—' },
+			{ kind: 'text', label: 'Bit depth', value: f ? `${f.image.bitDepth}-bit` : '—' },
+			{ kind: 'text', label: 'Channels', value: f ? CHANNELS[f.image.channels] : '—' }
+		];
 		switch (app.layer) {
 			case 'output':
 				return [
@@ -272,35 +320,49 @@
 						set: (x) => (v.light.shininess = x)
 					}
 				];
-			case 'base': {
-				const b = app.base;
+			case 'base':
 				return [
-					{ kind: 'category', label: 'File' },
-					{ kind: 'text', label: 'Name', value: b?.name ?? '(none)' },
-					{ kind: 'text', label: 'Format', value: b ? b.format.toUpperCase() : '—' },
-					{ kind: 'text', label: 'File size', value: b ? formatBytes(b.fileBytes) : '—' },
-					{ kind: 'text', label: 'Size', value: b ? `${b.image.width} × ${b.image.height}` : '—' },
-					{ kind: 'text', label: 'Bit depth', value: b ? `${b.image.bitDepth}-bit` : '—' },
-					{ kind: 'text', label: 'Channels', value: b ? CHANNELS[b.image.channels] : '—' },
+					...fileRows(app.base),
 					{ kind: 'category', label: 'Settings' },
 					convention('Convention', s.base.convention, (c) => (s.base.convention = c)),
-					{
+					strength(s.base.strength, (x) => (s.base.strength = x))
+				];
+			case 'detail': {
+				const d = s.detail;
+				if (!d) return fileRows(null);
+				// Tiling: repeats across the base. Offset: in detail UV units, so 0..1 covers every position.
+				const placement = (label: string, values: [number, number], axis: 0 | 1): Property => {
+					const tiling = values === d.tiling;
+					return {
 						kind: 'number',
-						label: 'Strength',
-						value: s.base.strength,
-						min: 0,
-						max: 10,
-						step: 0.05,
-						decimals: 2,
-						set: (x) => (s.base.strength = x)
-					}
+						label,
+						value: values[axis],
+						min: tiling ? 0.01 : 0,
+						max: tiling ? 64 : 1,
+						step: tiling ? 1 : 0.01,
+						decimals: tiling ? 2 : 3,
+						set: (x) => (values[axis] = x)
+					};
+				};
+				return [
+					...fileRows(app.detail),
+					{ kind: 'category', label: 'Settings' },
+					convention('Convention', d.convention, (c) => (d.convention = c)),
+					{
+						kind: 'select',
+						label: 'Blend method',
+						value: d.method,
+						options: blendMethods,
+						set: (m) => (d.method = m as BlendMethod)
+					},
+					strength(d.strength, (x) => (d.strength = x)),
+					{ kind: 'category', label: 'Placement' },
+					placement('Tiling X', d.tiling, 0),
+					placement('Tiling Y', d.tiling, 1),
+					placement('Offset X', d.offset, 0),
+					placement('Offset Y', d.offset, 1)
 				];
 			}
-			case 'detail':
-				return [
-					{ kind: 'category', label: 'File' },
-					{ kind: 'text', label: 'Name', value: '(none)' }
-				];
 		}
 	});
 
@@ -326,7 +388,9 @@
 		const file = e.dataTransfer?.files[0];
 		if (!file) return;
 		e.preventDefault();
-		if (canOpen) app.open(file);
+		if (!canOpen) return;
+		if (hasImage) droppedFile = file;
+		else app.open(file);
 	}}
 />
 
@@ -359,7 +423,13 @@
 <MenuBar {menus} />
 
 <Toolbar label="Standard">
-	<ToolButton icon="open" label="Open Base Map (Ctrl+O)" disabled={!canOpen} onclick={chooseFile} />
+	<ToolButton icon="open" label="Open Base Map (Ctrl+O)" disabled={!canOpen} onclick={() => chooseFile('base')} />
+	<ToolButton
+		icon="detailMap"
+		label="Open Detail Map (Ctrl+Shift+O)"
+		disabled={!canOpenDetail}
+		onclick={() => chooseFile('detail')}
+	/>
 	<ToolButton icon="save" label="Export (Ctrl+E)" disabled={!canExport} onclick={() => (exportOpen = true)} />
 	<ToolSeparator />
 	<ToolButton
@@ -436,6 +506,23 @@
 <ExportDialog {app} bind:open={exportOpen} />
 
 <DiagnosticsDialog bind:open={diagnosticsOpen} />
+
+<MessageBox
+	open={droppedFile !== null}
+	title="AGR Normal Map Editor"
+	icon="question"
+	onclose={() => (droppedFile = null)}
+>
+	<p>Open {droppedFile?.name} as:</p>
+	{#snippet buttons()}
+		{#if droppedFile}
+			{@const file = droppedFile}
+			<Button default onclick={() => openAs(file, 'base')}>Base Map</Button>
+			<Button onclick={() => openAs(file, 'detail')}>Detail Map</Button>
+		{/if}
+		<Button onclick={() => (droppedFile = null)}>Cancel</Button>
+	{/snippet}
+</MessageBox>
 
 <MessageBox open={app.error !== null} title="AGR Normal Map Editor" icon="error" onclose={() => (app.error = null)}>
 	<p>{app.error}</p>
