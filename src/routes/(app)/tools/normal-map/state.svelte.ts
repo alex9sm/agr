@@ -4,6 +4,7 @@ import { decodeFile, encodeImageFile } from '$lib/image/codec';
 import { fromRGBA16 } from '$lib/image/convert';
 import { download } from '$lib/image/download';
 import type { ImageBuffer, ImageFormat } from '$lib/image/types';
+import { domeRadius, lightAtPoint } from './lighting';
 import { processParams } from './normalmap';
 import { Renderer } from './renderer';
 
@@ -27,7 +28,8 @@ export interface View {
 	mode: 'wipe' | 'lit' | 'raw';
 	/** Divider position across the viewer, 0..1; lit on the left. */
 	wipe: number;
-	light: { azimuth: number; elevation: number };
+	/** Degrees; see lighting.ts. `shininess` is the Blinn-Phong exponent, used when `specular` is on. */
+	light: { azimuth: number; elevation: number; specular: boolean; shininess: number };
 	zoom: number;
 	pan: [number, number];
 	channel: 'rgb' | 'r' | 'g' | 'b' | 'a';
@@ -44,7 +46,7 @@ export const defaultSettings = (): Settings => ({
 export const defaultView = (): View => ({
 	mode: 'wipe',
 	wipe: 0.5,
-	light: { azimuth: 135, elevation: 45 },
+	light: { azimuth: 135, elevation: 45, specular: false, shininess: 10 },
 	zoom: 1,
 	pan: [0, 0],
 	channel: 'rgb',
@@ -65,6 +67,9 @@ export interface SourceImage {
 	/** Kept on the CPU so it can be re-uploaded after a lost GPU device. */
 	image: ImageBuffer;
 }
+
+/** Highest Blinn-Phong exponent offered; above it the highlight barely changes on typical maps. */
+export const MAX_SHININESS = 20;
 
 /** Zoom presets for the zoom buttons, as in classic image viewers. */
 export const ZOOM_STEPS = [1 / 16, 1 / 8, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 1, 1.5, 2, 3, 4, 6, 8, 16, 32];
@@ -248,6 +253,13 @@ export class NormalMapState {
 	panBy(dx: number, dy: number) {
 		const z = this.view.zoom;
 		this.view.pan = this.clampPan([this.view.pan[0] - dx / z, this.view.pan[1] - dy / z]);
+	}
+
+	/** Light tool: point the light at a spot on the dome, given in device pixels from the viewer center. */
+	aimLight(dx: number, dy: number) {
+		const { azimuth, elevation } = lightAtPoint(dx, dy, domeRadius(...this.viewerSize));
+		this.view.light.azimuth = azimuth;
+		this.view.light.elevation = elevation;
 	}
 
 	/** Keep the view center over the image. */

@@ -28,7 +28,7 @@
 	import DiagnosticsDialog from './DiagnosticsDialog.svelte';
 	import ExportDialog from './ExportDialog.svelte';
 	import Viewer from './Viewer.svelte';
-	import { NormalMapState, type Convention, type LayerId, type View } from './state.svelte';
+	import { MAX_SHININESS, NormalMapState, type Convention, type LayerId, type View } from './state.svelte';
 
 	const app = new NormalMapState();
 	const narrow = new MediaQuery('(max-width: 899px)', false);
@@ -236,22 +236,40 @@
 					},
 					{ kind: 'category', label: 'Lighting' },
 					{
-						kind: 'number',
+						kind: 'slider',
 						label: 'Light azimuth',
 						value: v.light.azimuth,
 						min: 0,
 						max: 360,
-						step: 5,
+						step: 1,
+						unit: '°',
 						set: (a) => (v.light.azimuth = a)
 					},
 					{
-						kind: 'number',
+						kind: 'slider',
 						label: 'Light elevation',
 						value: v.light.elevation,
 						min: 0,
 						max: 90,
-						step: 5,
+						step: 1,
+						unit: '°',
 						set: (e) => (v.light.elevation = e)
+					},
+					{
+						kind: 'checkbox',
+						label: 'Specular',
+						value: v.light.specular,
+						set: (on) => (v.light.specular = on)
+					},
+					{
+						kind: 'slider',
+						label: 'Shininess',
+						value: v.light.shininess,
+						min: 1,
+						max: MAX_SHININESS,
+						step: 1,
+						disabled: !v.light.specular,
+						set: (x) => (v.light.shininess = x)
 					}
 				];
 			case 'base': {
@@ -353,7 +371,12 @@
 	/>
 	<ToolSeparator />
 	<ToolButton icon="pan" label="Pan" pressed={app.view.tool === 'pan'} onclick={() => (app.view.tool = 'pan')} />
-	<ToolButton icon="light" label="Light Direction" pressed={false} disabled />
+	<ToolButton
+		icon="light"
+		label="Light Direction"
+		pressed={app.view.tool === 'light'}
+		onclick={() => (app.view.tool = 'light')}
+	/>
 	<ToolSeparator />
 	<ToolButton icon="zoomOut" label="Zoom Out (Ctrl+-)" disabled={!hasImage} onclick={() => app.zoomOut()} />
 	<ToolButton icon="zoomIn" label="Zoom In (Ctrl++)" disabled={!hasImage} onclick={() => app.zoomIn()} />

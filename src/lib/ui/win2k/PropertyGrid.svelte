@@ -3,6 +3,7 @@
 	import Checkbox from './Checkbox.svelte';
 	import NumberField from './NumberField.svelte';
 	import Select from './Select.svelte';
+	import Trackbar from './Trackbar.svelte';
 	import type { Property } from './types';
 
 	let { properties, label }: { properties: Property[]; label: string } = $props();
@@ -29,7 +30,10 @@
 				{:else}
 					{@const id = `${uid}-${i}`}
 					<tr>
-						<th scope="row"><label for={id}>{p.label}</label></th>
+						<th scope="row">
+							<!-- A slider is a div, which a <label> can't point at; it carries its own aria-label. -->
+							{#if p.kind === 'slider'}{p.label}{:else}<label for={id}>{p.label}</label>{/if}
+						</th>
 						<td>
 							{#if p.kind === 'text'}
 								<output {id}>{p.value}</output>
@@ -45,6 +49,21 @@
 									disabled={p.disabled}
 									onchange={p.set}
 								/>
+							{:else if p.kind === 'slider'}
+								<span class="slider" class:disabled={p.disabled}>
+									<Trackbar
+										{id}
+										compact
+										value={p.value}
+										min={p.min}
+										max={p.max}
+										step={p.step}
+										label={p.label}
+										disabled={p.disabled}
+										oninput={p.set}
+									/>
+									<output for={id}>{p.value.toFixed(p.decimals ?? 0)}{p.unit ?? ''}</output>
+								</span>
 							{:else if p.kind === 'select'}
 								<Select {id} compact value={p.value} options={p.options} disabled={p.disabled} onchange={p.set} />
 							{:else}
@@ -108,6 +127,20 @@
 		background: var(--face);
 		color: var(--text);
 		font-weight: bold;
+	}
+	.slider {
+		display: flex;
+		align-items: center;
+		height: 100%;
+	}
+	.slider output {
+		flex: none;
+		width: 36px;
+		padding: 0 4px 0 2px;
+		text-align: right;
+	}
+	.slider.disabled output {
+		color: var(--shadow);
 	}
 	output {
 		display: block;

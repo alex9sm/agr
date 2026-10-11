@@ -30,6 +30,20 @@ export type Property =
 			set: (value: number) => void;
 	  }
 	| {
+			kind: 'slider';
+			label: string;
+			value: number;
+			min: number;
+			max: number;
+			step?: number;
+			decimals?: number;
+			/** Appended to the value readout, e.g. '°'. */
+			unit?: string;
+			disabled?: boolean;
+			/** Called live while dragging. */
+			set: (value: number) => void;
+	  }
+	| {
 			kind: 'select';
 			label: string;
 			value: string;

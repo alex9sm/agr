@@ -5,6 +5,7 @@ import { bindGroup, computePipeline, createShader, renderPipeline, workgroupCoun
 import { readImageTexture } from '$lib/gpu/readback';
 import { createImageTexture, imageSizeProblem, uploadImage } from '$lib/gpu/textures';
 import type { ImageBuffer } from '$lib/image/types';
+import { halfVector, lightVector, type Light } from './lighting';
 import type { ProcessParams } from './normalmap';
 import displayWgsl from './display.wgsl?raw';
 import processWgsl from './process.wgsl?raw';
@@ -14,6 +15,11 @@ export interface ViewParams {
 	zoom: number;
 	/** View center relative to the image center, in image pixels. */
 	pan: [number, number];
+	/** Part of the canvas width, from the left, that shows the lit surface; the rest shows the raw output. */
+	lit: number;
+	light: Light;
+	/** Blinn-Phong exponent of the specular highlight, or 0 for none. */
+	shininess: number;
 }
 
 const BACKGROUND = { r: 0.502, g: 0.502, b: 0.502, a: 1 };
@@ -26,7 +32,13 @@ export class Renderer {
 	private context: GPUCanvasContext | null = null;
 	private canvas: HTMLCanvasElement | null = null;
 	private params: ProcessParams = { strength: 1, flipInput: false, flipOutput: false };
-	private view: ViewParams = { zoom: 1, pan: [0, 0] };
+	private view: ViewParams = {
+		zoom: 1,
+		pan: [0, 0],
+		lit: 0.5,
+		light: { azimuth: 135, elevation: 45 },
+		shininess: 0
+	};
 	private needsProcess = false;
 	private needsRender = false;
 	private frame = 0;
@@ -44,7 +56,7 @@ export class Renderer {
 	) {
 		const uniform = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
 		this.paramsBuffer = device.createBuffer({ label: 'process params', size: 16, usage: uniform });
-		this.viewBuffer = device.createBuffer({ label: 'view', size: 32, usage: uniform });
+		this.viewBuffer = device.createBuffer({ label: 'view', size: 64, usage: uniform });
 	}
 
 	static async create(device: GPUDevice): Promise<Renderer> {
@@ -177,10 +189,23 @@ export class Renderer {
 		const { canvas, context, device } = this;
 		if (!canvas || !context || !canvas.width || !canvas.height) return;
 		const size = this.imageSize ?? [1, 1];
+		const { zoom, pan, lit, light, shininess } = this.view;
+		// Layout of View in display.wgsl.
 		device.queue.writeBuffer(
 			this.viewBuffer,
 			0,
-			new Float32Array([canvas.width, canvas.height, ...size, ...this.view.pan, this.view.zoom, 0])
+			new Float32Array([
+				canvas.width,
+				canvas.height,
+				...size,
+				...pan,
+				zoom,
+				Math.round(lit * canvas.width),
+				...lightVector(light),
+				0,
+				...halfVector(light),
+				shininess
+			])
 		);
 		const encoder = device.createCommandEncoder({ label: 'display' });
 		const pass = encoder.beginRenderPass({

@@ -1,16 +1,19 @@
 <!--
-	Image viewer: hosts the WebGPU canvas and turns pointer, wheel and keyboard input into zoom and pan.
-	Drag to pan (middle button always), wheel zooms around the cursor, arrows pan, +/- zoom.
+	Image viewer: hosts the WebGPU canvas and turns pointer, wheel and keyboard input into zoom, pan and light changes.
+	Left drag uses the current tool (pan, or aim the light), middle drag always pans, wheel zooms around the cursor,
+	arrows pan, +/- zoom. The wipe divider is dragged directly in any tool.
 -->
 <script lang="ts">
+	import LightGizmo from './LightGizmo.svelte';
 	import { processParams } from './normalmap';
-	import type { NormalMapState } from './state.svelte';
+	import type { NormalMapState, View } from './state.svelte';
+	import WipeDivider from './WipeDivider.svelte';
 
 	let { app }: { app: NormalMapState } = $props();
 
 	let frame: HTMLDivElement;
 	let canvas: HTMLCanvasElement;
-	let drag = $state<{ x: number; y: number } | null>(null);
+	let drag = $state<{ tool: View['tool']; x: number; y: number } | null>(null);
 
 	const message = $derived.by(() => {
 		const s = app.gpuStatus.state;
@@ -53,7 +56,14 @@
 	});
 
 	$effect(() => {
-		app.renderer?.setView({ zoom: app.view.zoom, pan: [app.view.pan[0], app.view.pan[1]] });
+		const { zoom, pan, mode, wipe, light } = app.view;
+		app.renderer?.setView({
+			zoom,
+			pan: [pan[0], pan[1]],
+			lit: mode === 'lit' ? 1 : mode === 'raw' ? 0 : wipe,
+			light: { azimuth: light.azimuth, elevation: light.elevation },
+			shininess: light.specular ? light.shininess : 0
+		});
 	});
 
 	/** Device pixels per CSS pixel of the canvas. */
@@ -68,18 +78,20 @@
 
 	function onpointerdown(e: PointerEvent) {
 		frame.focus();
-		const panButton = e.button === 1 || (e.button === 0 && app.view.tool === 'pan');
-		if (!app.base || !panButton) return;
+		const tool = e.button === 1 ? 'pan' : e.button === 0 ? app.view.tool : null;
+		if (!app.base || !tool) return;
 		e.preventDefault();
 		frame.setPointerCapture(e.pointerId);
-		drag = { x: e.clientX, y: e.clientY };
+		drag = { tool, x: e.clientX, y: e.clientY };
+		if (tool === 'light') app.aimLight(...fromCenter(e));
 	}
 
 	function onpointermove(e: PointerEvent) {
 		if (!drag) return;
+		if (drag.tool === 'light') return app.aimLight(...fromCenter(e));
 		const s = scale();
 		app.panBy((e.clientX - drag.x) * s, (e.clientY - drag.y) * s);
-		drag = { x: e.clientX, y: e.clientY };
+		drag = { ...drag, x: e.clientX, y: e.clientY };
 	}
 
 	// Wheel needs a non-passive listener to stop the page from scrolling.
@@ -116,7 +128,8 @@
 	bind:this={frame}
 	class="viewer"
 	class:pannable={app.base && app.view.tool === 'pan'}
-	class:dragging={drag}
+	class:dragging={drag?.tool === 'pan'}
+	class:aiming={app.base && app.view.tool === 'light'}
 	role="application"
 	aria-roledescription="image viewer"
 	aria-label={app.base ? `Normal map ${app.base.name}. Arrow keys pan, plus and minus zoom.` : 'Image viewer'}
@@ -128,6 +141,12 @@
 	{onkeydown}
 >
 	<canvas bind:this={canvas}></canvas>
+	{#if app.base && app.view.tool === 'light' && app.viewerSize[0] && app.viewerSize[1]}
+		<LightGizmo light={app.view.light} size={app.viewerSize} />
+	{/if}
+	{#if app.base && app.view.mode === 'wipe'}
+		<WipeDivider bind:value={app.view.wipe} />
+	{/if}
 	{#if message}<div class="message">{message}</div>{/if}
 </div>
 
@@ -145,6 +164,9 @@
 	}
 	.dragging {
 		cursor: grabbing;
+	}
+	.aiming {
+		cursor: crosshair;
 	}
 	canvas {
 		display: block;

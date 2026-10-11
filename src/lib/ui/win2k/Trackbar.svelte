@@ -1,4 +1,7 @@
-<!-- Classic slider. `value` updates live while dragging; `onchange` fires once on release or key press. -->
+<!--
+	Classic slider. `value` updates live while dragging, reported by `oninput`; `onchange` fires once on release or
+	key press.
+-->
 <script lang="ts">
 	interface Props {
 		value?: number;
@@ -8,8 +11,12 @@
 		/** PageUp/PageDown step; defaults to a tenth of the range. */
 		page?: number;
 		width?: number;
+		/** Short, fills its container (property grid cells). */
+		compact?: boolean;
+		id?: string;
 		label: string;
 		disabled?: boolean;
+		oninput?: (value: number) => void;
 		onchange?: (value: number) => void;
 	}
 	let {
@@ -19,12 +26,15 @@
 		step = 0.01,
 		page,
 		width = 120,
+		compact = false,
+		id,
 		label,
 		disabled = false,
+		oninput,
 		onchange
 	}: Props = $props();
 
-	const THUMB = 11;
+	const thumb = $derived(compact ? 9 : 11);
 	let el: HTMLElement;
 	let dragging = false;
 
@@ -35,9 +45,15 @@
 		return Math.min(max, Math.max(min, Number(snapped.toFixed(10))));
 	}
 
+	function update(v: number) {
+		if (v === value) return;
+		value = v;
+		oninput?.(v);
+	}
+
 	function fromPointer(e: PointerEvent) {
 		const r = el.getBoundingClientRect();
-		value = snap(min + ((e.clientX - r.left - THUMB / 2) / (r.width - THUMB)) * (max - min));
+		update(snap(min + ((e.clientX - r.left - thumb / 2) / (r.width - thumb)) * (max - min)));
 	}
 
 	function onpointerdown(e: PointerEvent) {
@@ -72,16 +88,18 @@
 		)[e.key];
 		if (next === undefined) return;
 		e.preventDefault();
-		value = snap(next);
+		update(snap(next));
 		onchange?.(value);
 	}
 </script>
 
 <div
 	bind:this={el}
+	{id}
 	class="w2k-trackbar"
+	class:compact
 	class:disabled
-	style:width="{width}px"
+	style:width={compact ? undefined : `${width}px`}
 	role="slider"
 	tabindex={disabled ? -1 : 0}
 	aria-label={label}
@@ -96,7 +114,7 @@
 	{onkeydown}
 >
 	<span class="channel"></span>
-	<span class="thumb" style:left="calc((100% - {THUMB}px) * {frac})"></span>
+	<span class="thumb" style:left="calc((100% - {thumb}px) * {frac})"></span>
 </div>
 
 <style>
@@ -129,5 +147,21 @@
 	}
 	.disabled .thumb {
 		background: var(--dither);
+	}
+
+	.compact {
+		flex: 1;
+		min-width: 0;
+		height: 18px;
+	}
+	.compact:focus {
+		outline-offset: -1px;
+	}
+	.compact .channel {
+		top: 7px;
+	}
+	.compact .thumb {
+		width: 9px;
+		height: 16px;
 	}
 </style>
