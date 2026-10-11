@@ -32,6 +32,8 @@ export interface ProcessParams {
 	strength: number;
 	/** The input map is DirectX (Y down): negate Y on the way in. */
 	flipInput: boolean;
+	/** Bring base vectors to unit length before anything else. */
+	renormalize?: boolean;
 	/** Write DirectX (Y down): negate Y on the way out. */
 	flipOutput: boolean;
 	/** Blend a detail map on top; null or absent for none. */
@@ -48,7 +50,7 @@ export interface RGBA16Image {
 type Convention = 'opengl' | 'directx';
 
 export function processParams(settings: {
-	base: { convention: Convention; strength: number };
+	base: { convention: Convention; strength: number; renormalize?: boolean };
 	detail?: {
 		convention: Convention;
 		strength: number;
@@ -62,6 +64,7 @@ export function processParams(settings: {
 	return {
 		strength: settings.base.strength,
 		flipInput: settings.base.convention === 'directx',
+		renormalize: settings.base.renormalize,
 		flipOutput: settings.output.convention === 'directx',
 		detail: d && {
 			strength: d.strength,
@@ -98,6 +101,17 @@ export function applyStrength([x, y, z]: Vec3, s: number): Vec3 {
 	const sz = Math.max(z, MIN_Z);
 	const k = Math.hypot(x, y, z) / Math.hypot(sx, sy, sz);
 	return [sx * k, sy * k, sz * k];
+}
+
+/** Shorter vectors carry no usable direction (e.g. 8-bit mid-gray, 128 128 128, is 0.007 long). */
+export const MIN_LENGTH = 0.01;
+
+/**
+ * The Renormalize tool: unit length, same direction. Resizing, blurring and mipmapping shorten normals, which
+ * darkens shading in engines that don't renormalize. Vectors shorter than MIN_LENGTH become flat (0, 0, 1).
+ */
+export function renormalize(v: Vec3): Vec3 {
+	return Math.hypot(...v) < MIN_LENGTH ? [0, 0, 1] : normalize(v);
 }
 
 function normalize([x, y, z]: Vec3): Vec3 {
@@ -211,6 +225,7 @@ export function processRGBA16(
 	for (let i = 0; i < src.length; i += 4) {
 		let n: Vec3 = [decode(src[i]), decode(src[i + 1]), decode(src[i + 2])];
 		if (p.flipInput) n[1] = -n[1];
+		if (p.renormalize) n = renormalize(n);
 		n = applyStrength(n, p.strength);
 		if (dp) {
 			const pixel = i / 4;

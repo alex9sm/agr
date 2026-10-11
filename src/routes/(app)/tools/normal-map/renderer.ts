@@ -211,6 +211,7 @@ export class Renderer {
 		data.setFloat32(0, params.strength, true);
 		data.setUint32(4, params.flipInput ? 1 : 0, true);
 		data.setUint32(8, params.flipOutput ? 1 : 0, true);
+		data.setUint32(28, params.renormalize ? 1 : 0, true);
 		const detail = this.detail && params.detail;
 		if (detail) {
 			data.setUint32(12, 1, true);

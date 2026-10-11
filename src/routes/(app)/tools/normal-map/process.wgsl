@@ -1,4 +1,4 @@
-// Base map (+ optional detail map) → output: input conventions, strengths, blend, output convention.
+// Base map (+ optional detail map) → output: input conventions, renormalize, strengths, blend, output convention.
 // Mirrors processRGBA16 in normalmap.ts.
 
 struct Params {
@@ -9,7 +9,7 @@ struct Params {
   detail_strength: f32,
   detail_flip: u32,
   method: u32,      // index into BLEND_METHODS: 0 rnm, 1 whiteout, 2 udn, 3 linear
-  _pad: u32,
+  renormalize: u32,
   tiling: vec2f,
   offset: vec2f,
 }
@@ -20,12 +20,20 @@ struct Params {
 @group(0) @binding(3) var detail: texture_2d<u32>; // 1×1 placeholder when has_detail is 0
 
 const MIN_Z: f32 = 1e-4;
+const MIN_LENGTH: f32 = 0.01;
 const MAX_TAPS: f32 = 4.0;
 
 // Scale the slope, keep the vector's length (see applyStrength in normalmap.ts).
 fn apply_strength(n: vec3f, s: f32) -> vec3f {
   if (s == 1.0) { return n; }
   return normalize(vec3f(n.xy * s, max(n.z, MIN_Z))) * length(n);
+}
+
+// See renormalize in normalmap.ts.
+fn renormalize(v: vec3f) -> vec3f {
+  let len = length(v);
+  if (len < MIN_LENGTH) { return vec3f(0.0, 0.0, 1.0); }
+  return v / len;
 }
 
 fn to_hemisphere(v: vec3f) -> vec3f {
@@ -69,6 +77,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
   let c = textureLoad(base, id.xy, 0);
   var n = decode_normal(c.rgb);
   if (params.flip_input != 0u) { n.y = -n.y; }
+  if (params.renormalize != 0u) { n = renormalize(n); }
   n = apply_strength(n, params.strength);
   if (params.has_detail != 0u) {
     var d = sample_detail(id.xy, vec2f(size)) * 2.0 - 1.0;

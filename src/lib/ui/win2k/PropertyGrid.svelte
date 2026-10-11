@@ -1,4 +1,7 @@
-<!-- Two-column property / value grid with category rows and in-place editors. -->
+<!--
+	Two-column property / value grid with category rows and in-place editors. `oncommit` reports each finished edit
+	with the property's label: after a number, select or checkbox change, and when a slider is released.
+-->
 <script lang="ts">
 	import Checkbox from './Checkbox.svelte';
 	import NumberField from './NumberField.svelte';
@@ -6,7 +9,11 @@
 	import Trackbar from './Trackbar.svelte';
 	import type { Property } from './types';
 
-	let { properties, label }: { properties: Property[]; label: string } = $props();
+	let {
+		properties,
+		label,
+		oncommit
+	}: { properties: Property[]; label: string; oncommit?: (label: string) => void } = $props();
 
 	const uid = $props.id();
 </script>
@@ -47,7 +54,10 @@
 									step={p.step}
 									decimals={p.decimals}
 									disabled={p.disabled}
-									onchange={p.set}
+									onchange={(v) => {
+										p.set(v);
+										oncommit?.(p.label);
+									}}
 								/>
 							{:else if p.kind === 'slider'}
 								<span class="slider" class:disabled={p.disabled}>
@@ -61,13 +71,32 @@
 										label={p.label}
 										disabled={p.disabled}
 										oninput={p.set}
+										onchange={() => oncommit?.(p.label)}
 									/>
 									<output for={id}>{p.value.toFixed(p.decimals ?? 0)}{p.unit ?? ''}</output>
 								</span>
 							{:else if p.kind === 'select'}
-								<Select {id} compact value={p.value} options={p.options} disabled={p.disabled} onchange={p.set} />
+								<Select
+									{id}
+									compact
+									value={p.value}
+									options={p.options}
+									disabled={p.disabled}
+									onchange={(v) => {
+										p.set(v);
+										oncommit?.(p.label);
+									}}
+								/>
 							{:else}
-								<Checkbox {id} checked={p.value} disabled={p.disabled} onchange={p.set} />
+								<Checkbox
+									{id}
+									checked={p.value}
+									disabled={p.disabled}
+									onchange={(v) => {
+										p.set(v);
+										oncommit?.(p.label);
+									}}
+								/>
 							{/if}
 						</td>
 					</tr>

@@ -5,8 +5,10 @@ import {
 	blend,
 	decode,
 	encode,
+	MIN_LENGTH,
 	processParams,
 	processRGBA16,
+	renormalize,
 	sampleDetail,
 	sampleRepeat,
 	type DetailParams,
@@ -311,5 +313,42 @@ describe('processRGBA16 with a detail map', () => {
 		const plain = processRGBA16(base.data, params({ strength: 2 }));
 		expect(processRGBA16(base.data, params({ strength: 2, detail: detail({}) }))).toEqual(plain);
 		expect(run(base, { strength: 2 })).toEqual(plain);
+	});
+});
+
+describe('renormalize', () => {
+	it('brings vectors to unit length, keeping their direction', () => {
+		for (const v of [[0.3, -0.2, 0.6], [0.9, 0.9, 0.9], [0.01, 0, 0.02]] as Vec3[]) {
+			const out = renormalize(v);
+			expect(Math.hypot(...out)).toBeCloseTo(1, 12);
+			out.forEach((c, i) => expect(c).toBeCloseTo(unit(v)[i], 12));
+		}
+	});
+
+	it('turns vectors too short to have a direction into flat normals', () => {
+		expect(renormalize([0, 0, 0])).toEqual([0, 0, 1]);
+		// 8-bit mid-gray (128, 128, 128): about 0.007 long.
+		const gray = decode(128 * 257);
+		expect(Math.hypot(gray, gray, gray)).toBeLessThan(MIN_LENGTH);
+		expect(renormalize([gray, gray, gray])).toEqual([0, 0, 1]);
+	});
+
+	it('runs before strength, so the output is unit length', () => {
+		const short = new Uint16Array(300 * 4);
+		for (let i = 0; i < short.length; i += 4) {
+			const a = (i / 4) * 0.37;
+			short.set([encode(0.4 * Math.cos(a)), encode(0.4 * Math.sin(a)), encode(0.5), 65535], i);
+		}
+		for (const strength of [1, 0.5, 2]) {
+			const out = processRGBA16(short, params({ strength, renormalize: true }));
+			for (let i = 0; i < out.length; i += 4) {
+				expect(Math.hypot(decode(out[i]), decode(out[i + 1]), decode(out[i + 2]))).toBeCloseTo(1, 4);
+			}
+		}
+	});
+
+	it('maps from the base settings', () => {
+		const settings = { base: { convention: 'opengl' as const, strength: 1, renormalize: true }, output: { convention: 'opengl' as const } };
+		expect(processParams(settings).renormalize).toBe(true);
 	});
 });

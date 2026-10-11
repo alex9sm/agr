@@ -1,4 +1,4 @@
-<!-- Normal Map Editor shell: menus, toolbar, Layers / Properties / Viewer / Pixel Info panes, status bar. -->
+<!-- Normal Map Editor shell: menus, toolbar, Layers / Properties / Viewer panes, status bar. -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -109,7 +109,6 @@
 	let aboutOpen = $state(false);
 	let sideWidth = $state(240);
 	let layersHeight = $state(130);
-	let infoHeight = $state(76);
 
 	const conventions: SelectOption[] = [
 		{ value: 'opengl', label: 'OpenGL (Y+)' },
@@ -135,11 +134,14 @@
 	];
 	const selectLayer = (id: string) => (app.layer = id as LayerId);
 
+	/** Undo step names for property edits, by layer: rows like Convention and Strength appear on several. */
+	const LAYER_PREFIX: Record<LayerId, string> = { output: 'Output ', base: 'Base ', detail: 'Detail ' };
+	const commitProperty = (label: string) => app.commit(LAYER_PREFIX[app.layer] + label);
+
 	function radio<T>(label: string, current: T, value: T, set: (v: T) => void): MenuItem {
 		return { label, radio: true, checked: current === value, action: () => set(value) };
 	}
 	const setMode = (mode: View['mode']) => (app.view.mode = mode);
-	const setChannel = (channel: View['channel']) => (app.view.channel = channel);
 
 	// Items whose feature lands in a later phase stay disabled.
 	const menus: MenuDef[] = $derived([
@@ -163,8 +165,18 @@
 		{
 			label: '&Edit',
 			items: [
-				{ label: '&Undo', shortcut: 'Ctrl+Z', disabled: true },
-				{ label: '&Redo', shortcut: 'Ctrl+Y', disabled: true },
+				{
+					label: app.history.undoLabel ? `&Undo ${app.history.undoLabel}` : '&Undo',
+					shortcut: 'Ctrl+Z',
+					disabled: !app.history.undoLabel || app.busy !== null,
+					action: () => app.undo()
+				},
+				{
+					label: app.history.redoLabel ? `&Redo ${app.history.redoLabel}` : '&Redo',
+					shortcut: 'Ctrl+Y',
+					disabled: !app.history.redoLabel || app.busy !== null,
+					action: () => app.redo()
+				},
 				'separator',
 				{ label: 'Reset &Settings', action: () => app.resetSettings() }
 			]
@@ -175,22 +187,6 @@
 				radio('&Lit', app.view.mode, 'lit', setMode),
 				radio('&Raw', app.view.mode, 'raw', setMode),
 				radio('&Wipe', app.view.mode, 'wipe', setMode),
-				'separator',
-				{
-					label: '&Channel',
-					submenu: [
-						radio('&RGB', app.view.channel, 'rgb', setChannel),
-						radio('R&ed', app.view.channel, 'r', setChannel),
-						radio('&Green', app.view.channel, 'g', setChannel),
-						radio('&Blue', app.view.channel, 'b', setChannel),
-						radio('&Alpha', app.view.channel, 'a', setChannel)
-					]
-				},
-				{
-					label: '&Tile 3×3',
-					checked: app.view.tile3x3,
-					action: () => (app.view.tile3x3 = !app.view.tile3x3)
-				},
 				'separator',
 				{
 					label: '&Zoom',
@@ -214,7 +210,12 @@
 					disabled: !hasImage,
 					action: () => app.flipGreen()
 				},
-				{ label: '&Renormalize', disabled: true }
+				{
+					label: '&Renormalize',
+					checked: app.settings.base.renormalize,
+					disabled: !hasImage,
+					action: () => app.toggleRenormalize()
+				}
 			]
 		},
 		{
@@ -325,6 +326,12 @@
 					...fileRows(app.base),
 					{ kind: 'category', label: 'Settings' },
 					convention('Convention', s.base.convention, (c) => (s.base.convention = c)),
+					{
+						kind: 'checkbox',
+						label: 'Renormalize',
+						value: s.base.renormalize,
+						set: (on) => (s.base.renormalize = on)
+					},
 					strength(s.base.strength, (x) => (s.base.strength = x))
 				];
 			case 'detail': {
@@ -402,21 +409,9 @@
 	</Pane>
 {/snippet}
 
-{#snippet pixelInfo()}
-	<Pane title="Pixel Info">
-		<table class="pixel-info">
-			<tbody>
-				<tr><th>Position</th><td>—</td></tr>
-				<tr><th>RGBA</th><td>—</td></tr>
-				<tr><th>Vector</th><td>—</td></tr>
-			</tbody>
-		</table>
-	</Pane>
-{/snippet}
-
 {#snippet propertiesPane()}
 	<Pane title="Properties">
-		<PropertyGrid {properties} label="Properties" />
+		<PropertyGrid {properties} label="Properties" oncommit={commitProperty} />
 	</Pane>
 {/snippet}
 
@@ -460,7 +455,6 @@
 {#if narrow.current}
 	<div class="stack">
 		<div class="stack-viewer">{@render viewer()}</div>
-		<div class="stack-info">{@render pixelInfo()}</div>
 		<div class="layer-pick">
 			<label for="layer-pick">Layer:</label>
 			<Select id="layer-pick" options={layerOptions} value={app.layer} onchange={selectLayer} width={160} />
@@ -477,11 +471,7 @@
 			{@render propertiesPane()}
 		</div>
 		<Splitter bind:size={sideWidth} min={160} max={600} reserve={200} label="Resize side panes" />
-		<div class="column" style:grid-template-rows="minmax(0, 1fr) 4px min({infoHeight}px, calc(100% - 104px))">
-			{@render viewer()}
-			<Splitter orientation="horizontal" bind:size={infoHeight} after min={40} label="Resize Pixel Info pane" />
-			{@render pixelInfo()}
-		</div>
+		<div class="column">{@render viewer()}</div>
 	</div>
 {/if}
 
@@ -492,8 +482,9 @@
 		<Icon name="normalMap" size={32} />
 		<div>
 			<p><b>AGR Normal Map Editor</b><br />Version 0.1</p>
-			<p>Adjusts, converts and blends normal maps on your GPU. Everything runs in your browser and images never leave
+			<p>Adjusts, converts and blends normal maps on your GPU. Images never leave
 				your computer.</p>
+			<p>Have feedback? Email info@advancedgr.com</p>
 			<hr class="w2k-etched" />
 			<p>&copy; 2026 AGR Holdings LLC</p>
 		</div>
@@ -586,17 +577,6 @@
 		min-height: 0;
 	}
 
-	.pixel-info {
-		border-collapse: collapse;
-		font-family: var(--mono);
-		font-size: 12px;
-	}
-	.pixel-info th {
-		padding: 1px 12px 1px 4px;
-		font-weight: normal;
-		text-align: left;
-	}
-
 	/* Narrow screens: one scrolling column, viewer first. */
 	.stack {
 		display: flex;
@@ -610,10 +590,6 @@
 	.stack-viewer {
 		flex: none;
 		height: max(240px, 50vh);
-	}
-	.stack-info {
-		flex: none;
-		height: 84px;
 	}
 	.layer-pick {
 		display: flex;

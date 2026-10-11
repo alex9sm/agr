@@ -34,8 +34,8 @@ const FLIPS: [boolean, boolean][] = [
 	[false, true],
 	[true, true]
 ];
-const SETTINGS: ProcessParams[] = STRENGTHS.flatMap((strength) =>
-	FLIPS.map(([flipInput, flipOutput]) => ({ strength, flipInput, flipOutput }))
+const SETTINGS: ProcessParams[] = [false, true].flatMap((renormalize) =>
+	STRENGTHS.flatMap((strength) => FLIPS.map(([flipInput, flipOutput]) => ({ strength, flipInput, flipOutput, renormalize })))
 );
 
 // Detail blending: each method under these detail settings × these base settings. Footprints (detail texels per
@@ -168,7 +168,7 @@ export async function runDiagnostics(): Promise<DiagnosticsReport> {
 				const diff = compare(gpu, processRGBA16(input, params));
 				max = Math.max(max, diff.max);
 				over1 += diff.over1;
-				if (params.strength === 1) lossless = Math.max(lossless, diff.max);
+				if (params.strength === 1 && !params.renormalize) lossless = Math.max(lossless, diff.max);
 			}
 			checks.push({
 				name: `Processing matches CPU: ${name}`,

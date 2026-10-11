@@ -1,7 +1,8 @@
-// Normal Map Editor state. `Settings` change the output (and will be undoable); `View` only changes the display.
+// Normal Map Editor state. `Settings` change the output and are undoable; `View` only changes the display.
 import { initGpu, type Gpu, type GpuFailure } from '$lib/gpu/device';
 import { decodeFile, encodeImageFile } from '$lib/image/codec';
 import { fromRGBA16 } from '$lib/image/convert';
+import { History } from '$lib/history.svelte';
 import { download } from '$lib/image/download';
 import type { ImageBuffer, ImageFormat } from '$lib/image/types';
 import { domeRadius, lightAtPoint } from './lighting';
@@ -21,7 +22,7 @@ export interface DetailSettings {
 }
 
 export interface Settings {
-	base: { convention: Convention; strength: number };
+	base: { convention: Convention; strength: number; renormalize: boolean };
 	/** Present exactly while a detail map is open. */
 	detail: DetailSettings | null;
 	output: { convention: Convention; format: 'png' | 'tga'; bitDepth: 8 | 16 };
@@ -35,13 +36,11 @@ export interface View {
 	light: { azimuth: number; elevation: number; specular: boolean; shininess: number };
 	zoom: number;
 	pan: [number, number];
-	channel: 'rgb' | 'r' | 'g' | 'b' | 'a';
-	tile3x3: boolean;
 	tool: 'pan' | 'light';
 }
 
 export const defaultSettings = (): Settings => ({
-	base: { convention: 'opengl', strength: 1 },
+	base: { convention: 'opengl', strength: 1, renormalize: false },
 	detail: null,
 	output: { convention: 'opengl', format: 'png', bitDepth: 16 }
 });
@@ -61,8 +60,6 @@ export const defaultView = (): View => ({
 	light: { azimuth: 135, elevation: 45, specular: false, shininess: 10 },
 	zoom: 1,
 	pan: [0, 0],
-	channel: 'rgb',
-	tile3x3: false,
 	tool: 'pan'
 });
 
@@ -90,6 +87,12 @@ const MAX_ZOOM = 64;
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+/** What one undo step restores: the settings, and which detail map is open. */
+interface EditState {
+	settings: Settings;
+	detail: SourceImage | null;
+}
+
 export class NormalMapState {
 	settings = $state(defaultSettings());
 	view = $state(defaultView());
@@ -100,6 +103,11 @@ export class NormalMapState {
 	renderer = $state.raw<Renderer | null>(null);
 	base = $state.raw<SourceImage | null>(null);
 	detail = $state.raw<SourceImage | null>(null);
+	/** Undo history for this base map. Steps hold detail maps too, so undoing Close Detail brings one back. */
+	readonly history = new History<EditState>(
+		() => ({ settings: $state.snapshot(this.settings) as Settings, detail: this.detail }),
+		(a, b) => a.detail === b.detail && JSON.stringify(a.settings) === JSON.stringify(b.settings)
+	);
 	/** Viewer canvas size in device pixels. */
 	viewerSize = $state.raw<[number, number]>([0, 0]);
 	/** Wall time of the last processing pass. */
@@ -192,6 +200,7 @@ export class NormalMapState {
 		this.base = base;
 		this.applySourceDefaults();
 		this.zoomInitial();
+		this.history.reset(); // a new base map is a new document
 	}
 
 	/** Open a detail map (needs a base map). Its settings carry over when it replaces another detail map. */
@@ -202,6 +211,7 @@ export class NormalMapState {
 		this.detail = detail;
 		this.settings.detail ??= defaultDetail(this.settings.base.convention);
 		this.layer = 'detail';
+		this.commit('Open Detail');
 	}
 
 	/** Close both maps. */
@@ -210,12 +220,14 @@ export class NormalMapState {
 		this.base = null;
 		this.renderer?.clearBase();
 		this.processMs = null;
+		this.history.reset();
 	}
 
 	closeDetail() {
 		this.detail = null;
 		this.settings.detail = null;
 		this.renderer?.clearDetail();
+		this.commit('Close Detail');
 	}
 
 	/** Export defaults follow the source: same format, same bit depth. */
@@ -252,12 +264,58 @@ export class NormalMapState {
 		this.settings = defaultSettings();
 		this.applySourceDefaults();
 		if (this.detail) this.settings.detail = defaultDetail();
+		this.commit('Reset Settings');
 	}
 
 	/** Flip G: switch the output convention between OpenGL and DirectX. */
 	flipGreen() {
 		const out = this.settings.output;
 		out.convention = out.convention === 'opengl' ? 'directx' : 'opengl';
+		this.commit('Flip Green');
+	}
+
+	toggleRenormalize() {
+		this.settings.base.renormalize = !this.settings.base.renormalize;
+		this.commit('Renormalize');
+	}
+
+	// --- Undo and redo. ---
+
+	/** Record the settings as an undo step named `label`; call after each finished edit. */
+	commit(label: string) {
+		this.history.commit(label);
+	}
+
+	async undo() {
+		await this.restore(this.history.undo());
+	}
+
+	async redo() {
+		await this.restore(this.history.redo());
+	}
+
+	private async restore(state: EditState | null) {
+		if (!state) return;
+		if (state.detail !== this.detail) {
+			// Without a renderer (lost device), restoreImages uploads it once the GPU is back.
+			try {
+				if (state.detail) {
+					this.busy = `Restoring ${state.detail.name}…`;
+					await this.renderer?.setDetail(state.detail.image);
+				} else {
+					this.renderer?.clearDetail();
+				}
+			} catch (err) {
+				this.error = `${state.detail!.name} could not be restored on the GPU: ${messageOf(err)}`;
+				this.closeDetail();
+				this.history.reset();
+				return;
+			} finally {
+				this.busy = null;
+			}
+			this.detail = state.detail;
+		}
+		this.settings = structuredClone(state.settings);
 	}
 
 	// --- Zoom and pan. Anchors are device pixels from the viewer center. ---

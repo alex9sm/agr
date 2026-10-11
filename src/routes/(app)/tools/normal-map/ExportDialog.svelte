@@ -23,6 +23,7 @@
 	function setFormat(format: string) {
 		out.format = format === 'tga' ? 'tga' : 'png';
 		name = withExtension(name, out.format);
+		app.commit('Output Format');
 	}
 
 	function submit(e: SubmitEvent) {
@@ -58,7 +59,10 @@
 				{ value: '16', label: '16 bits per channel' }
 			]}
 			disabled={out.format === 'tga'}
-			onchange={(d) => (out.bitDepth = d === '8' ? 8 : 16)}
+			onchange={(d) => {
+				out.bitDepth = d === '8' ? 8 : 16;
+				app.commit('Output Bit depth');
+			}}
 			width={160}
 		/>
 

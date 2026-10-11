@@ -5,7 +5,7 @@
 <footer class="site-footer">
 	<div class="cell">
 		<h2 class="label">AGR Holdings LLC</h2>
-		<p>Software and consulting solutions for logistics, aerospace, and defense.</p>
+		<p>Software and consulting solutions for logistics, graphics, and defense.</p>
 		<p class="mono"><a href="mailto:info@advancedgr.com">info@advancedgr.com</a></p>
 	</div>
 	<div class="cell">
