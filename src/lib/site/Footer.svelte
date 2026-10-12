@@ -13,8 +13,6 @@
 		<ul class="mono">
 			<li><a href={resolve('/')}>Home</a></li>
 			<li><a href={resolve('/products')}>Products</a></li>
-			<li><a href={resolve('/services')}>Services</a></li>
-			<li><a href={resolve('/about')}>About</a></li>
 			<li><a href={resolve('/contact')}>Contact</a></li>
 			<li><a href={resolve('/login')}>Customer Login</a></li>
 		</ul>
@@ -26,5 +24,5 @@
 </footer>
 
 <div class="footer mono">
-	<span>&copy; 2023&ndash;2026 AGR Holdings LLC. All rights reserved. AGR Holdings LLC is the office of <a href="https://alex9m.com">Alex</a></span>
+	<span>&copy; 2023&ndash;2026 AGR Holdings LLC. All rights reserved.</span>
 </div>

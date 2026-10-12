@@ -6,8 +6,6 @@
 	<h2 class="label">Index</h2>
 	<ol class="mono">
 		<li><a href={resolve('/products')}>Products</a></li>
-		<li><a href={resolve('/services')}>Services</a></li>
-		<li><a href={resolve('/about')}>About AGR</a></li>
 		<li><a href={resolve('/contact')}>Contact</a></li>
 		<li><a href={resolve('/login')}>Customer Login</a></li>
 	</ol>
