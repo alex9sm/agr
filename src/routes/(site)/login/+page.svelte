@@ -12,7 +12,10 @@
 	}
 </script>
 
-<svelte:head><title>Login - AGR</title></svelte:head>
+<svelte:head>
+	<title>Login - AGR</title>
+	<meta name="robots" content="noindex" />
+</svelte:head>
 
 <h2>Customer Portal Login</h2>
 

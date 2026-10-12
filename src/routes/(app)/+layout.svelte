@@ -10,7 +10,7 @@
 	const title = $derived(page.data.title ?? 'AGR Tools');
 </script>
 
-<svelte:head><title>{title}</title></svelte:head>
+<svelte:head><title>{page.data.pageTitle ?? title}</title></svelte:head>
 
 <!-- AppWindow's back link does a full page load, so tool styles never carry over to the site. -->
 <AppWindow {title} icon={page.data.icon} back={{ href: resolve('/'), label: 'AGR Home' }}>

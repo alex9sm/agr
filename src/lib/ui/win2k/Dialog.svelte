@@ -1,6 +1,7 @@
 <!--
 	Modal dialog on <dialog>: the browser traps focus. `open` is the source of truth; Esc and the
 	title-bar X set it to false. (The native close event can arrive late, e.g. while the page is hidden.)
+	Contents render only while open, so closed dialogs add no text to the prerendered page.
 -->
 <script lang="ts">
 	import { onDestroy, untrack, type Snippet } from 'svelte';
@@ -87,22 +88,24 @@
 	{oncancel}
 	onclose={onNativeClose}
 >
-	<div
-		class="w2k-titlebar"
-		role="presentation"
-		onpointerdown={dragStart}
-		onpointermove={dragMove}
-		onpointerup={() => (drag = null)}
-		onpointercancel={() => (drag = null)}
-	>
-		<span class="title" id="{uid}-title">{title}</span>
-		<button type="button" class="w2k-captionbutton" aria-label="Close" onclick={dismiss}>
-			<Glyph name="close" />
-		</button>
-	</div>
-	<div class="body">{@render children()}</div>
-	{#if buttons}
-		<div class="buttons" class:center={centerButtons}>{@render buttons()}</div>
+	{#if open}
+		<div
+			class="w2k-titlebar"
+			role="presentation"
+			onpointerdown={dragStart}
+			onpointermove={dragMove}
+			onpointerup={() => (drag = null)}
+			onpointercancel={() => (drag = null)}
+		>
+			<span class="title" id="{uid}-title">{title}</span>
+			<button type="button" class="w2k-captionbutton" aria-label="Close" onclick={dismiss}>
+				<Glyph name="close" />
+			</button>
+		</div>
+		<div class="body">{@render children()}</div>
+		{#if buttons}
+			<div class="buttons" class:center={centerButtons}>{@render buttons()}</div>
+		{/if}
 	{/if}
 </dialog>
 
