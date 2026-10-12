@@ -7,6 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
+    "start": "node serve.js",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
@@ -24,6 +25,7 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
-    "fast-png": "^8.0.0"
+    "fast-png": "^8.0.0",
+    "sirv": "^3.0.2"
   }
 }
